@@ -1,0 +1,21 @@
+CREATE TABLE `listings` (
+	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+	`sku` text DEFAULT '' NOT NULL,
+	`product_name` text NOT NULL,
+	`platform` text NOT NULL,
+	`status` text DEFAULT 'preparacao' NOT NULL,
+	`sale_price` real DEFAULT 0 NOT NULL,
+	`title` text DEFAULT '' NOT NULL,
+	`description` text DEFAULT '' NOT NULL,
+	`packaging` text DEFAULT '' NOT NULL,
+	`weight` real DEFAULT 0 NOT NULL,
+	`width` real DEFAULT 0 NOT NULL,
+	`length` real DEFAULT 0 NOT NULL,
+	`height` real DEFAULT 0 NOT NULL,
+	`image_keys` text DEFAULT '[]' NOT NULL,
+	`listing_url` text DEFAULT '' NOT NULL,
+	`created_by` text DEFAULT '' NOT NULL,
+	`updated_by` text DEFAULT '' NOT NULL,
+	`created_at` text DEFAULT '' NOT NULL,
+	`updated_at` text DEFAULT '' NOT NULL
+);

@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Precificador — ML &amp; Shopee</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #13131a;
+    --surface2: #1c1c27;
+    --border: #2a2a3a;
+    --text: #e8e8f0;
+    --muted: #6b6b85;
+    --ml: #ffe000;
+    --ml-dim: #3d3500;
+    --shopee: #ff5722;
+    --shopee-dim: #3d1500;
+    --green: #00e5a0;
+    --green-dim: #003d2a;
+    --red: #ff4060;
+    --accent: #7c6dfa;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DM Mono', monospace;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.4;
+  }
+
+  .wrapper { position: relative; z-index: 1; max-width: 1100px; margin: 0 auto; padding: 40px 24px 80px; }
+
+  header { margin-bottom: 40px; }
+  .logo-row { display: flex; align-items: center; gap: 14px; margin-bottom: 8px; }
+  .logo-icon {
+    width: 40px; height: 40px; border-radius: 10px;
+    background: linear-gradient(135deg, var(--ml), var(--shopee));
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Syne', sans-serif; font-weight: 800; font-size: 18px; color: #000;
+    flex-shrink: 0;
+  }
+  h1 { font-family: 'Syne', sans-serif; font-size: 26px; font-weight: 800; letter-spacing: -0.01em; }
+  .subtitle { color: var(--muted); font-size: 13px; margin-top: 2px; }
+
+  nav.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 32px; overflow-x: auto; }
+  nav.tabs button {
+    background: none; border: none; color: var(--muted); font-family: 'DM Mono', monospace;
+    font-size: 13px; padding: 12px 18px; cursor: pointer; border-bottom: 2px solid transparent;
+    white-space: nowrap; transition: color .15s, border-color .15s;
+  }
+  nav.tabs button.active { color: var(--text); border-bottom-color: var(--accent); }
+  nav.tabs button:hover { color: var(--text); }
+
+  .view { display: none; }
+  .view.active { display: block; }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    padding: 24px; margin-bottom: 20px;
+  }
+  .card-title { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 14px; letter-spacing: .04em; text-transform: uppercase; margin-bottom: 18px; color: var(--muted); }
+
+  .form-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+  .form-grid.dims { grid-template-columns: repeat(4, 1fr); }
+  .form-group { display: flex; flex-direction: column; gap: 6px; }
+  .form-group.full { grid-column: 1 / -1; }
+  label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  input, select {
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 12px; color: var(--text); font-family: 'DM Mono', monospace; font-size: 14px;
+    outline: none; transition: border-color .15s;
+  }
+  input:focus, select:focus { border-color: var(--accent); }
+
+  .btn-row { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+  .btn {
+    font-family: 'DM Mono', monospace; font-size: 13px; border-radius: 8px; padding: 11px 18px;
+    cursor: pointer; border: 1px solid var(--border); background: var(--surface2); color: var(--text);
+    transition: transform .1s, border-color .15s;
+  }
+  .btn:hover { border-color: var(--accent); }
+  .btn:active { transform: scale(.97); }
+  .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .btn-ghost { background: transparent; }
+  .btn-sm { padding: 6px 12px; font-size: 12px; }
+
+  .results-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 20px; }
+  .result-card { border-radius: 12px; padding: 18px; border: 1px solid var(--border); }
+  .result-card.ml { background: linear-gradient(160deg, var(--ml-dim), var(--surface)); }
+  .result-card.shopee { background: linear-gradient(160deg, var(--shopee-dim), var(--surface)); }
+  .result-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  .result-plat { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 13px; text-transform: uppercase; letter-spacing: .05em; }
+  .result-plat.ml-color { color: var(--ml); }
+  .result-plat.shopee-color { color: var(--shopee); }
+  .result-pv { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 28px; margin-bottom: 14px; }
+  .result-row { display: flex; justify-content: space-between; font-size: 12.5px; padding: 4px 0; color: var(--muted); }
+  .result-row b { color: var(--text); font-weight: 500; }
+  .margin-good { color: var(--green) !important; }
+  .margin-warn { color: #ffb020 !important; }
+  .margin-bad { color: var(--red) !important; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: var(--muted); font-weight: 400; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  td { padding: 10px; border-bottom: 1px solid var(--border); }
+  tr:last-child td { border-bottom: none; }
+  .badge { font-size: 10px; padding: 3px 8px; border-radius: 5px; font-weight: 600; text-transform: uppercase; }
+  .badge-ml { background: var(--ml-dim); color: var(--ml); }
+  .badge-shopee { background: var(--shopee-dim); color: var(--shopee); }
+  .tag-pos { color: var(--green); }
+  .tag-warn { color: #ffb020; }
+  .tag-neg { color: var(--red); }
+  .sku-cell { font-family: 'DM Mono', monospace; font-size: 11.5px; color: var(--accent); }
+
+  .toolbar { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+  .toolbar input, .toolbar select { flex: 1; min-width: 140px; }
+  .count-pill { font-size: 12px; color: var(--muted); margin-left: auto; }
+
+  .empty-state { text-align: center; padding: 50px 20px; color: var(--muted); font-size: 13px; }
+
+  .action-btn { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 14px; padding: 4px 8px; border-radius: 6px; }
+  .action-btn:hover { color: var(--red); background: var(--surface2); }
+  .action-btn.edit-btn:hover { color: var(--accent); }
+
+  .config-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+
+  .toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(20px);
+    background: var(--surface2); border: 1px solid var(--border); padding: 12px 20px; border-radius: 10px;
+    font-size: 13px; opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; z-index: 100;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast.success { border-color: var(--green); color: var(--green); }
+  .toast.error { border-color: var(--red); color: var(--red); }
+
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.6); display: none;
+    align-items: center; justify-content: center; z-index: 200; padding: 20px;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 24px; max-width: 480px; width: 100%; max-height: 85vh; overflow-y: auto; }
+
+  .import-preview-wrap { overflow-x: auto; max-height: 340px; overflow-y: auto; border: 1px solid var(--border); border-radius: 10px; }
+  .measure-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px}.measure-summary div{background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:11px 12px}.measure-summary span,.measure-summary strong{display:block}.measure-summary span{color:var(--muted);font-size:10px;text-transform:uppercase;margin-bottom:5px}.measure-summary strong{font-family:'Syne',sans-serif;font-size:15px}.helper{color:var(--muted);font-size:11px;line-height:1.55;margin-top:8px}
+
+  @media (max-width: 700px) {
+    .form-grid, .form-grid.dims, .config-grid { grid-template-columns: 1fr; }
+    .results-grid { grid-template-columns: 1fr; }
+    .measure-summary{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+<div class="wrapper">
+  <header>
+    <div class="logo-row">
+      <div class="logo-icon">R$</div>
+      <div>
+        <h1>Precificador</h1>
+        <div class="subtitle">Mercado Livre &amp; Shopee — preço ideal por produto</div>
+      </div>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab-btn active" data-view="calc">Calculadora</button>
+    <button class="tab-btn" data-view="catalog">Catálogo</button>
+    <button class="tab-btn" data-view="import">Importar CSV</button>
+    <button class="tab-btn" data-view="config">Configurações</button>
+  </nav>
+
+  <!-- CALCULADORA -->
+  <div class="view active" id="view-calc">
+    <div class="card">
+      <div class="card-title">Dados do produto</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Nome do produto</label>
+          <input type="text" id="c-nome" placeholder="Ex: Cera Carnauba 240ml">
+        </div>
+        <div class="form-group">
+          <label>SKU</label>
+          <input type="text" id="c-sku" placeholder="Ex: 2009006">
+        </div>
+        <div class="form-group">
+          <label>Custo do produto (R$)</label>
+          <input type="number" id="c-custo" placeholder="0.00" step="0.01" min="0">
+        </div>
+        <div class="form-group"><label>Embalagem padrão</label><select id="c-embalagem-preset" onchange="aplicarEmbalagem()"><option value="">Personalizada</option><option value="cx01">Cx 01 — 18 × 18 × 31 cm</option><option value="cx02">Cx 02 — 14 × 27 × 9 cm</option><option value="cx03">Cx 03 — 10 × 19 × 9 cm</option><option value="saco2030">Saco 20 × 30 cm</option><option value="saco1520">Saco 15 × 20 cm</option></select></div>
+        <div class="form-group"><label>Custo da embalagem (R$)</label><input type="number" id="c-embalagem" value="1.5" step="0.01" min="0"></div>
+        <div class="form-group"><label>Custos adicionais (R$)</label><input type="number" id="c-extra" value="0" step="0.01" min="0" placeholder="Etiqueta, proteção, manuseio"></div>
+        <div class="form-group">
+          <label>Plataforma</label>
+          <select id="c-plataforma">
+            <option value="ambas">Ambas (ML + Shopee)</option>
+            <option value="ml">Mercado Livre</option>
+            <option value="shopee">Shopee</option>
+          </select>
+        </div>
+        <div class="form-group" id="ml-modalidade-group">
+          <label>Modalidade ML</label>
+          <select id="c-ml-modalidade">
+            <option value="ambas_ml">Clássico + Premium</option>
+            <option value="classico">Clássico (12%)</option>
+            <option value="premium">Premium (17%)</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="m-dim-section" style="margin-top:14px;">
+        <label style="display:block;margin-bottom:8px;">Embalagem pronta para envio</label>
+        <div class="form-grid dims" id="m-dim-fields">
+          <div class="form-group">
+            <label>Peso real (kg)</label>
+            <input type="number" id="c-peso" value="0.3" step="0.01" min="0">
+          </div>
+          <div class="form-group">
+            <label>Altura (cm)</label>
+            <input type="number" id="c-altura" value="10" step="0.1" min="0">
+          </div>
+          <div class="form-group">
+            <label>Largura (cm)</label>
+            <input type="number" id="c-largura" value="10" step="0.1" min="0">
+          </div>
+          <div class="form-group">
+            <label>Comprimento (cm)</label>
+            <input type="number" id="c-comprimento" value="10" step="0.1" min="0">
+          </div>
+        </div>
+        <p class="helper">Informe as medidas externas e o peso total do pacote já embalado. O sistema compara o peso real com o peso cúbico.</p>
+        <div class="measure-summary"><div><span>Peso real</span><strong id="sum-peso-real">0,30 kg</strong></div><div><span>Peso cúbico</span><strong id="sum-peso-cubico">0,17 kg</strong></div><div><span>Peso considerado</span><strong id="sum-peso-cobrado">0,30 kg</strong></div></div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="calcular()">Calcular preço</button>
+        <button class="btn btn-ghost" onclick="limparCalc()">Limpar</button>
+        <button class="btn" onclick="adicionarAoCatalogo()">💾 Salvar no catálogo</button>
+      </div>
+    </div>
+
+    <div id="resultado-area"></div>
+  </div>
+
+  <!-- CATÁLOGO -->
+  <div class="view" id="view-catalog">
+    <div class="card">
+      <div class="card-title">Catálogo de produtos</div>
+      <div class="toolbar">
+        <input type="text" id="search-input" placeholder="Buscar por nome ou SKU..." oninput="renderCatalog()">
+        <select id="filter-plat" onchange="renderCatalog()">
+          <option value="">Todas plataformas</option>
+          <option value="ml">Mercado Livre</option>
+          <option value="shopee">Shopee</option>
+        </select>
+        <select id="filter-margem" onchange="renderCatalog()">
+          <option value="">Todas margens</option>
+          <option value="ok">Margem OK</option>
+          <option value="low">Margem baixa</option>
+        </select>
+        <button class="btn btn-sm" onclick="exportarCSV()">⇩ Exportar CSV</button>
+      </div>
+      <div class="import-preview-wrap">
+        <table>
+          <thead>
+            <tr><th>Produto</th><th>SKU</th><th>Custo</th><th>Plat.</th><th>Preço venda</th><th>Margem</th><th>Lucro</th><th></th></tr>
+          </thead>
+          <tbody id="catalog-body"></tbody>
+        </table>
+      </div>
+      <div class="empty-state" id="catalog-empty" style="display:none;">Nenhum produto no catálogo ainda. Calcule e salve um produto na aba Calculadora.</div>
+      <div style="margin-top:14px;"><span class="count-pill" id="catalog-count"></span></div>
+    </div>
+  </div>
+
+  <!-- IMPORTAR CSV -->
+  <div class="view" id="view-import">
+    <div class="card">
+      <div class="card-title">Importar planilha (CSV)</div>
+      <p style="font-size:12.5px;color:var(--muted);margin-bottom:14px;">Colunas esperadas: <b style="color:var(--text);">sku;nome;custo;embalagem;custos_adicionais;plataforma;peso;altura;largura;comprimento</b> (separador ; ). Plataforma pode ser "ml", "shopee" ou "ambas".</p>
+      <div class="btn-row" style="margin-top:0;">
+        <label class="btn btn-primary" style="cursor:pointer;">
+          Escolher arquivo CSV
+          <input type="file" id="csv-file" accept=".csv" style="display:none;" onchange="handleCSV(event)">
+        </label>
+        <button class="btn btn-ghost" onclick="baixarModelo()">⇩ Baixar modelo CSV</button>
+      </div>
+      <div id="import-preview" style="display:none;margin-top:20px;">
+        <div class="import-preview-wrap">
+          <table>
+            <thead><tr><th>Produto</th><th>Custo</th><th>Plat.</th><th>Preço sugerido</th><th>Margem</th><th>Lucro</th></tr></thead>
+            <tbody id="import-preview-body"></tbody>
+          </table>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-primary" onclick="confirmarImportacao()">Adicionar todos ao catálogo</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONFIGURAÇÕES -->
+  <div class="view" id="view-config">
+    <div class="card">
+      <div class="card-title">Parâmetros gerais</div>
+      <div class="config-grid">
+        <div class="form-group">
+          <label>Margem alvo (%)</label>
+          <input type="number" id="cfg-margem" step="0.1" min="0">
+        </div>
+        <div class="form-group">
+          <label>Imposto (%)</label>
+          <input type="number" id="cfg-imposto" step="0.1" min="0">
+        </div>
+        <div class="form-group"><label>TACOS / anúncios (%)</label><input type="number" id="cfg-tacos" step="0.1" min="0"></div>
+        <div class="form-group"><label>Divisor do peso cúbico</label><input type="number" id="cfg-divisor" step="1" min="1"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title" style="color:var(--ml);">Mercado Livre</div>
+      <div class="config-grid">
+        <div class="form-group">
+          <label>Comissão Clássico (%)</label>
+          <input type="number" id="cfg-ml-classico" step="0.1" min="0">
+        </div>
+        <div class="form-group">
+          <label>Comissão Premium (%)</label>
+          <input type="number" id="cfg-ml-premium" step="0.1" min="0">
+        </div>
+      </div>
+      <p style="font-size:11.5px;color:var(--muted);margin-top:12px;">A tabela de frete por peso × preço segue o padrão do Mercado Livre e não é editável aqui.</p>
+    </div>
+
+    <div class="card">
+      <div class="card-title" style="color:var(--shopee);">Shopee — faixas de comissão</div>
+      <div class="import-preview-wrap">
+        <table>
+          <thead><tr><th>Faixa de preço</th><th>Comissão (%)</th><th>Taxa fixa (R$)</th></tr></thead>
+          <tbody id="shopee-table-config"></tbody>
+        </table>
+      </div>
+      <p style="font-size:11.5px;color:var(--muted);margin-top:12px;">* Frete Shopee é pago pelo comprador acima de R$ 79 — não é debitado do vendedor.</p>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="salvarConfig()">💾 Salvar configurações</button>
+      <button class="btn btn-ghost" onclick="resetConfig()">↺ Restaurar padrão</button>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal">
+    <div class="card-title">Editar produto</div>
+    <div class="form-group full" style="margin-bottom:12px;">
+      <label>Custo (R$)</label>
+      <input type="number" id="m-custo" step="0.01">
+    </div>
+    <div class="form-group full" style="margin-bottom:12px;">
+      <label>Embalagem (R$)</label>
+      <input type="number" id="m-embalagem" step="0.01">
+    </div>
+    <div class="form-group full" style="margin-bottom:12px;"><label>Custos adicionais (R$)</label><input type="number" id="m-extra" step="0.01"></div>
+    <div id="m-dim-section-modal" style="margin-bottom:12px;">
+      <label style="display:block;margin-bottom:8px;">Peso / dimensões</label>
+      <div class="form-grid dims" id="m-dim-fields-modal">
+        <input type="number" id="m-peso" step="0.01" placeholder="Peso kg">
+        <input type="number" id="m-altura" step="0.1" placeholder="Altura cm">
+        <input type="number" id="m-largura" step="0.1" placeholder="Largura cm">
+        <input type="number" id="m-comprimento" step="0.1" placeholder="Comprim. cm">
+      </div>
+    </div>
+    <div id="m-preview" style="font-size:13px;color:var(--muted);margin-bottom:14px;"></div>
+    <div class="btn-row" style="margin-top:0;">
+      <button class="btn btn-primary" onclick="salvarEdicao()">Salvar</button>
+      <button class="btn btn-ghost" onclick="fecharModal()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// CONFIG (regras replicadas das planilhas Shopee e ML)
+// ============================================================
+const DEFAULT_CONFIG = {
+  margem: 0.15,
+  imposto: 0.05,
+  tacos: 0,
+  divisor_cubico: 6000,
+  ml_comissao_classico: 0.12,
+  ml_comissao_premium: 0.17,
+  shopee_faixas: [
+    { min: 0,   max: 79.99,     comissao: 0.20, fixa: 4  },
+    { min: 80,  max: 99.99,     comissao: 0.14, fixa: 16 },
+    { min: 100, max: 199.99,    comissao: 0.14, fixa: 20 },
+    { min: 200, max: 499.99,    comissao: 0.14, fixa: 26 },
+    { min: 500, max: 999999999, comissao: 0.14, fixa: 26 }
+  ],
+  ml_frete: [
+    { label: 'Até 0,3 kg',      min: 0,    max: 0.3,  frete: [[18.99,5.65],[48.99,6.55],[78.99,7.75],[99.99,12.35],[119.99,14.35],[149.99,16.45],[199.99,18.45],[999999,20.95]] },
+    { label: 'De 0,3 a 0,5 kg', min: 0.3,  max: 0.5,  frete: [[18.99,5.95],[48.99,6.65],[78.99,7.85],[99.99,13.25],[119.99,15.45],[149.99,17.65],[199.99,19.85],[999999,22.55]] },
+    { label: 'De 0,5 a 1 kg',   min: 0.5,  max: 1,    frete: [[18.99,6.05],[48.99,6.75],[78.99,7.95],[99.99,13.85],[119.99,16.15],[149.99,18.45],[199.99,20.75],[999999,23.65]] },
+    { label: 'De 1 a 1,5 kg',   min: 1,    max: 1.5,  frete: [[18.99,6.15],[48.99,6.85],[78.99,8.05],[99.99,14.15],[119.99,16.45],[149.99,18.85],[199.99,21.15],[999999,24.65]] },
+    { label: 'De 1,5 a 2 kg',   min: 1.5,  max: 2,    frete: [[18.99,6.25],[48.99,6.95],[78.99,8.15],[99.99,14.45],[119.99,16.85],[149.99,19.25],[199.99,21.65],[999999,24.65]] },
+    { label: 'De 2 a 3 kg',     min: 2,    max: 3,    frete: [[18.99,6.35],[48.99,7.95],[78.99,8.55],[99.99,15.75],[119.99,18.35],[149.99,21.05],[199.99,23.65],[999999,26.25]] },
+    { label: 'De 3 a 4 kg',     min: 3,    max: 4,    frete: [[18.99,6.45],[48.99,8.15],[78.99,8.95],[99.99,17.05],[119.99,19.85],[149.99,22.65],[199.99,25.55],[999999,28.35]] },
+    { label: 'De 4 a 5 kg',     min: 4,    max: 5,    frete: [[18.99,6.55],[48.99,8.35],[78.99,9.75],[99.99,18.45],[119.99,21.55],[149.99,24.65],[199.99,27.75],[999999,30.75]] },
+    { label: 'De 5 a 6 kg',     min: 5,    max: 6,    frete: [[18.99,6.65],[48.99,8.55],[78.99,9.95],[99.99,25.45],[119.99,28.55],[149.99,32.65],[199.99,35.75],[999999,39.75]] },
+    { label: 'De 6 a 7 kg',     min: 6,    max: 7,    frete: [[18.99,6.75],[48.99,8.75],[78.99,10.15],[99.99,27.05],[119.99,31.05],[149.99,36.05],[199.99,40.05],[999999,44.05]] },
+    { label: 'De 7 a 8 kg',     min: 7,    max: 8,    frete: [[18.99,6.85],[48.99,8.95],[78.99,10.35],[99.99,28.85],[119.99,33.65],[149.99,38.45],[199.99,43.25],[999999,48.05]] },
+    { label: 'De 8 a 9 kg',     min: 8,    max: 9,    frete: [[18.99,6.95],[48.99,9.15],[78.99,10.55],[99.99,29.65],[119.99,34.55],[149.99,39.55],[199.99,44.45],[999999,49.35]] },
+    { label: 'De 9 a 11 kg',    min: 9,    max: 11,   frete: [[18.99,7.05],[48.99,9.55],[78.99,10.95],[99.99,41.25],[119.99,48.05],[149.99,54.95],[199.99,61.75],[999999,68.65]] },
+    { label: 'De 11 a 13 kg',   min: 11,   max: 13,   frete: [[18.99,7.15],[48.99,9.95],[78.99,11.35],[99.99,42.15],[119.99,49.25],[149.99,56.25],[199.99,63.25],[999999,70.25]] },
+    { label: 'De 13 a 15 kg',   min: 13,   max: 15,   frete: [[18.99,7.25],[48.99,10.35],[78.99,11.75],[99.99,43.25],[119.99,50.45],[149.99,57.65],[199.99,65.05],[999999,72.25]] },
+    { label: 'Acima de 15 kg',  min: 15,   max: 999,  frete: [[18.99,7.55],[48.99,11.15],[78.99,12.55],[99.99,49.05],[119.99,57.25],[149.99,65.45],[199.99,73.55],[999999,81.75]] },
+  ]
+};
+
+let CONFIG = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
+let catalog = [];
+let lastCalcResult = null;
+let importResults = [];
+let _editId = null;
+const EMBALAGENS={
+  cx01:{custo:1.5,alt:31,lar:18,comp:18},
+  cx02:{custo:1.5,alt:9,lar:14,comp:27},
+  cx03:{custo:1.5,alt:9,lar:10,comp:19},
+  saco2030:{custo:.1,alt:5,lar:20,comp:30},
+  saco1520:{custo:.1,alt:5,lar:15,comp:20}
+};
+
+// ============================================================
+// CALC ENGINE
+// ============================================================
+function getFreteMl(pesoKg, precoVenda) {
+  const faixaPeso = CONFIG.ml_frete.find(f => pesoKg <= f.max) || CONFIG.ml_frete[CONFIG.ml_frete.length-1];
+  const faixaPreco = faixaPeso.frete.find(f => precoVenda <= f[0]);
+  return faixaPreco ? faixaPreco[1] : faixaPeso.frete[faixaPeso.frete.length-1][1];
+}
+
+function getFaixaShopee(preco) {
+  return CONFIG.shopee_faixas.find(f => preco >= f.min && preco <= f.max) || CONFIG.shopee_faixas[CONFIG.shopee_faixas.length-1];
+}
+
+function calcPrecoML(custo, embalagem, pesoKg, comissao) {
+  comissao = comissao || CONFIG.ml_comissao_classico;
+  const extra=arguments[4]||0;
+  let pv=(custo+embalagem+extra)/(1-comissao-CONFIG.imposto-CONFIG.tacos-CONFIG.margem);
+  for (let i = 0; i < 20; i++) {
+    const frete = getFreteMl(pesoKg || 0, pv);
+    const pvNovo=(custo+embalagem+extra+frete)/(1-comissao-CONFIG.imposto-CONFIG.tacos-CONFIG.margem);
+    if (Math.abs(pvNovo - pv) < 0.01) { pv = pvNovo; break; }
+    pv = pvNovo;
+  }
+  pv = Math.ceil(pv * 100) / 100;
+  const frete = getFreteMl(pesoKg || 0, pv);
+  const taxaML = pv * comissao;
+  const imposto = pv * CONFIG.imposto;
+  const tacos=pv*CONFIG.tacos;
+  const custos=custo+embalagem+extra+frete+taxaML+imposto+tacos;
+  const lucro = pv - custos;
+  const mc = lucro / pv;
+  return {pv,taxaML,imposto,tacos,frete,custos,lucro,mc,comissao};
+}
+
+function calcPrecoShopee(custo, embalagem, extra) {
+  extra=extra||0;
+  let pv=(custo+embalagem+extra)/(1-.14-CONFIG.imposto-CONFIG.tacos-CONFIG.margem);
+  for (let i = 0; i < 30; i++) {
+    const faixa = getFaixaShopee(pv);
+    const pvNovo=(custo+embalagem+extra+faixa.fixa)/(1-faixa.comissao-CONFIG.imposto-CONFIG.tacos-CONFIG.margem);
+    if (Math.abs(pvNovo - pv) < 0.01) { pv = pvNovo; break; }
+    pv = pvNovo;
+  }
+  pv = Math.ceil(pv * 100) / 100;
+  const faixa = getFaixaShopee(pv);
+  const taxaShopee = pv * faixa.comissao;
+  const imposto = pv * CONFIG.imposto;
+  const tacos=pv*CONFIG.tacos;
+  const custos=custo+embalagem+extra+faixa.fixa+taxaShopee+imposto+tacos;
+  const lucro = pv - custos;
+  const mc = lucro / pv;
+  return {pv,taxaShopee,taxaFixa:faixa.fixa,imposto,tacos,custos,lucro,mc,faixa};
+}
+
+// ============================================================
+// HELPERS
+// ============================================================
+function fmt(n) { return (n || 0).toFixed(2).replace('.', ','); }
+function toast(msg, type) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + (type || '');
+  setTimeout(() => t.classList.remove('show'), 2400);
+}
+function mcClassFor(mc) {
+  return mc >= CONFIG.margem ? 'margin-good' : mc >= CONFIG.margem * 0.7 ? 'margin-warn' : 'margin-bad';
+}
+function tagClassFor(mc) {
+  return mc >= CONFIG.margem ? 'tag-pos' : mc >= CONFIG.margem * 0.7 ? 'tag-warn' : 'tag-neg';
+}
+
+// ============================================================
+// TABS
+// ============================================================
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('view-' + btn.dataset.view).classList.add('active');
+    if (btn.dataset.view === 'catalog') renderCatalog();
+  });
+});
+
+document.getElementById('c-plataforma').addEventListener('change', function() {
+  const isShopee = this.value === 'shopee';
+  document.getElementById('ml-modalidade-group').style.display = isShopee ? 'none' : 'flex';
+});
+['c-peso','c-altura','c-largura','c-comprimento'].forEach(id=>document.getElementById(id).addEventListener('input',atualizarResumoPeso));
+function aplicarEmbalagem(){const x=EMBALAGENS[document.getElementById('c-embalagem-preset').value];if(!x)return;document.getElementById('c-embalagem').value=x.custo;document.getElementById('c-peso').value='';document.getElementById('c-altura').value=x.alt;document.getElementById('c-largura').value=x.lar;document.getElementById('c-comprimento').value=x.comp;atualizarResumoPeso()}
+function dadosPeso(prefix='c'){const peso=parseFloat(document.getElementById(prefix+'-peso').value)||0,alt=parseFloat(document.getElementById(prefix+'-altura').value)||0,lar=parseFloat(document.getElementById(prefix+'-largura').value)||0,comp=parseFloat(document.getElementById(prefix+'-comprimento').value)||0,cubico=alt*lar*comp/(CONFIG.divisor_cubico||6000);return{peso,alt,lar,comp,cubico,cobrado:Math.max(peso,cubico)}}
+function atualizarResumoPeso(){const p=dadosPeso();document.getElementById('sum-peso-real').textContent=p.peso.toFixed(2).replace('.',',')+' kg';document.getElementById('sum-peso-cubico').textContent=p.cubico.toFixed(2).replace('.',',')+' kg';document.getElementById('sum-peso-cobrado').textContent=p.cobrado.toFixed(2).replace('.',',')+' kg'}
+
+// ============================================================
+// CALCULADORA
+// ============================================================
+function calcular() {
+  const custo = parseFloat(document.getElementById('c-custo').value);
+  const embalagem = parseFloat(document.getElementById('c-embalagem').value) || 1.5;
+  const extra=parseFloat(document.getElementById('c-extra').value)||0;
+  const plat = document.getElementById('c-plataforma').value;
+  const nome = document.getElementById('c-nome').value || 'Produto';
+  const sku = document.getElementById('c-sku').value || '';
+
+  if (isNaN(custo) || custo <= 0) { toast('Informe o custo do produto', 'error'); return; }
+
+  const medidas=dadosPeso(),{peso,alt,lar,comp,cubico:pesoCubico,cobrado:pesoConsiderado}=medidas;
+
+  const modalidade = document.getElementById('c-ml-modalidade').value;
+  const usaML = plat === 'ml' || plat === 'ambas';
+  const usaShopee = plat === 'shopee' || plat === 'ambas';
+
+  const mlClassico = usaML && (modalidade === 'classico' || modalidade === 'ambas_ml')
+    ? calcPrecoML(custo,embalagem,pesoConsiderado,CONFIG.ml_comissao_classico,extra):null;
+  const mlPremium = usaML && (modalidade === 'premium' || modalidade === 'ambas_ml')
+    ? calcPrecoML(custo,embalagem,pesoConsiderado,CONFIG.ml_comissao_premium,extra):null;
+  const spRes=usaShopee?calcPrecoShopee(custo,embalagem,extra):null;
+
+  lastCalcResult={sku,nome,custo,embalagem,extra,plat,modalidade,peso,alt,lar,comp,pesoCubico,pesoConsiderado,mlClassico,mlPremium,spRes};
+
+  let html = '';
+  const totalCards = (mlClassico ? 1 : 0) + (mlPremium ? 1 : 0) + (spRes ? 1 : 0);
+  if (totalCards > 1) html += `<div class="results-grid" style="${totalCards === 3 ? 'grid-template-columns:1fr 1fr 1fr;' : ''}">`;
+
+  if (mlClassico) html += renderMLCard(mlClassico, pesoConsiderado, 'Clássico');
+  if (mlPremium)  html += renderMLCard(mlPremium, pesoConsiderado, 'Premium');
+  if(spRes)html+=renderShopeeCard(spRes,pesoConsiderado);
+
+  if (totalCards > 1) html += `</div>`;
+
+  document.getElementById('resultado-area').innerHTML = html;
+}
+
+function renderMLCard(r, pesoConsiderado, modalidade) {
+  const mc = (r.mc * 100).toFixed(1);
+  return `<div class="result-card ml">
+    <div class="result-head">
+      <span class="result-plat ml-color">Mercado Livre — ${modalidade}</span>
+      <span class="badge badge-ml">${(r.comissao*100).toFixed(0)}%</span>
+    </div>
+    <div class="result-pv">R$ ${fmt(r.pv)}</div>
+    <div class="result-row"><span>Comissão ML</span><b>R$ ${fmt(r.taxaML)}</b></div>
+    <div class="result-row"><span>Frete (peso ${pesoConsiderado.toFixed(2)}kg)</span><b>R$ ${fmt(r.frete)}</b></div>
+    <div class="result-row"><span>Imposto</span><b>R$ ${fmt(r.imposto)}</b></div>
+    <div class="result-row"><span>TACOS / anúncios</span><b>R$ ${fmt(r.tacos)}</b></div>
+    <div class="result-row"><span>Lucro líquido</span><b class="${tagClassFor(r.mc)}">R$ ${fmt(r.lucro)}</b></div>
+    <div class="result-row"><span>Margem contribuição</span><b class="${mcClassFor(r.mc)}">${mc}%</b></div>
+  </div>`;
+}
+
+function renderShopeeCard(r,pesoConsiderado) {
+  const mc = (r.mc * 100).toFixed(1);
+  return `<div class="result-card shopee">
+    <div class="result-head">
+      <span class="result-plat shopee-color">Shopee</span>
+      <span class="badge badge-shopee">${(r.faixa.comissao*100).toFixed(0)}%</span>
+    </div>
+    <div class="result-pv">R$ ${fmt(r.pv)}</div>
+    <div class="result-row"><span>Comissão Shopee</span><b>R$ ${fmt(r.taxaShopee)}</b></div>
+    <div class="result-row"><span>Taxa fixa</span><b>R$ ${fmt(r.taxaFixa)}</b></div>
+    <div class="result-row"><span>Peso cadastrado</span><b>${pesoConsiderado.toFixed(2)} kg</b></div>
+    <div class="result-row"><span>Imposto</span><b>R$ ${fmt(r.imposto)}</b></div>
+    <div class="result-row"><span>TACOS / anúncios</span><b>R$ ${fmt(r.tacos)}</b></div>
+    <div class="result-row"><span>Lucro líquido</span><b class="${tagClassFor(r.mc)}">R$ ${fmt(r.lucro)}</b></div>
+    <div class="result-row"><span>Margem contribuição</span><b class="${mcClassFor(r.mc)}">${mc}%</b></div>
+  </div>`;
+}
+
+function limparCalc() {
+  ['c-nome','c-sku','c-custo','c-peso','c-altura','c-largura','c-comprimento'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = (id === 'c-peso' || id === 'c-altura' || id === 'c-largura' || id === 'c-comprimento') ? el.defaultValue : '';
+  });
+  document.getElementById('resultado-area').innerHTML = '';
+  lastCalcResult = null;
+}
+
+// ============================================================
+// CATÁLOGO
+// ============================================================
+function payloadCatalogo(b,r,plat,modality){return{sku:b.sku,name:b.nome,platform:plat,modality,cost:b.custo,packagingCost:b.embalagem,extraCost:b.extra,weight:b.peso,height:b.alt,width:b.lar,length:b.comp,cubicWeight:b.pesoCubico,chargedWeight:b.pesoConsiderado,salePrice:r.pv,profit:r.lucro,margin:r.mc}}
+async function salvarRegistro(p){const r=await fetch('/api/pricing',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(p)});if(!r.ok)throw new Error()}
+async function adicionarAoCatalogo() {
+  if (!lastCalcResult) { toast('Calcule um preço primeiro', 'error'); return; }
+  const j=[];if(lastCalcResult.mlClassico)j.push(salvarRegistro(payloadCatalogo(lastCalcResult,lastCalcResult.mlClassico,'ml','Clássico')));if(lastCalcResult.mlPremium)j.push(salvarRegistro(payloadCatalogo(lastCalcResult,lastCalcResult.mlPremium,'ml','Premium')));if(lastCalcResult.spRes)j.push(salvarRegistro(payloadCatalogo(lastCalcResult,lastCalcResult.spRes,'shopee','')));try{await Promise.all(j);await carregarCatalogo();toast('Produto salvo para toda a equipe!','success')}catch{toast('Não foi possível salvar','error')}
+}
+async function carregarCatalogo(){const r=await fetch('/api/pricing');if(!r.ok)return;catalog=(await r.json()).map(p=>({id:p.id,sku:p.sku,nome:p.name,custo:p.cost,embalagem:p.packaging_cost,extra:p.extra_cost,plat:p.platform,modalidade:p.modality,peso:p.weight,alt:p.height,lar:p.width,comp:p.length,pesoCubico:p.cubic_weight,pesoConsiderado:p.charged_weight,pv:p.sale_price,lucro:p.profit,mc:p.margin}));renderCatalog()}
+
+function renderCatalog() {
+  const search = (document.getElementById('search-input')?.value || '').toLowerCase();
+  const filterPlat = document.getElementById('filter-plat')?.value || '';
+  const filterMargem = document.getElementById('filter-margem')?.value || '';
+
+  let items = catalog.filter(p => {
+    const matchSearch = p.nome.toLowerCase().includes(search) || (p.sku||'').toLowerCase().includes(search);
+    const matchPlat = !filterPlat || p.plat === filterPlat;
+    const matchMargem = !filterMargem
+      || (filterMargem === 'ok' && p.mc >= CONFIG.margem)
+      || (filterMargem === 'low' && p.mc < CONFIG.margem);
+    return matchSearch && matchPlat && matchMargem;
+  });
+
+  const tbody = document.getElementById('catalog-body');
+  const empty = document.getElementById('catalog-empty');
+  const countEl = document.getElementById('catalog-count');
+  countEl.textContent = `${catalog.length} produto${catalog.length !== 1 ? 's' : ''} cadastrado${catalog.length !== 1 ? 's' : ''} — ${items.length} exibido${items.length !== 1 ? 's' : ''}`;
+
+  if (!items.length) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+
+  tbody.innerHTML = items.map(p => {
+    const badgeHtml = p.plat === 'ml'
+      ? `<span class="badge badge-ml">ML ${p.modalidade}</span>`
+      : `<span class="badge badge-shopee">Shopee</span>`;
+    return `<tr>
+      <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.nome}</td>
+      <td class="sku-cell">${p.sku || '—'}</td>
+      <td>R$ ${fmt(p.custo)}</td>
+      <td>${badgeHtml}</td>
+      <td style="font-weight:600;">R$ ${fmt(p.pv)}</td>
+      <td class="${tagClassFor(p.mc)}">${(p.mc*100).toFixed(1)}%</td>
+      <td class="tag-pos">R$ ${fmt(p.lucro)}</td>
+      <td>
+        <button class="action-btn edit-btn" onclick="abrirEdicao('${p.id}')" title="Editar">✎</button>
+        <button class="action-btn" onclick="removerItem('${p.id}')" title="Remover">✕</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function removerItem(id){if(!confirm('Excluir este cálculo compartilhado?'))return;const r=await fetch('/api/pricing/'+id,{method:'DELETE'});if(r.ok){catalog=catalog.filter(p=>p.id!=id);renderCatalog();toast('Produto removido','success')}}
+
+function exportarCSV() {
+  if (!catalog.length) { toast('Catálogo vazio', 'error'); return; }
+  let csv = 'sku;nome;custo;plataforma;modalidade;preco_venda;margem_pct;lucro\n';
+  catalog.forEach(p => {
+    csv += `${p.sku||''};${p.nome};${p.custo.toFixed(2)};${p.plat};${p.modalidade||''};${p.pv.toFixed(2)};${(p.mc*100).toFixed(1)};${p.lucro.toFixed(2)}\n`;
+  });
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'catalogo_precificado.csv';
+  a.click();
+}
+
+// ---- Edição de item do catálogo ----
+function abrirEdicao(id) {
+  _editId = id;
+  const p = catalog.find(x => x.id == id);
+  if (!p) return;
+  document.getElementById('m-custo').value = p.custo;
+  document.getElementById('m-embalagem').value = p.embalagem || 1.5;
+  document.getElementById('m-extra').value=p.extra||0;
+  document.getElementById('m-peso').value = p.peso || '';
+  document.getElementById('m-altura').value = p.alt || '';
+  document.getElementById('m-largura').value = p.lar || '';
+  document.getElementById('m-comprimento').value = p.comp || '';
+
+  const dimSection = document.getElementById('m-dim-section-modal');
+  dimSection.style.display='block';
+
+  document.getElementById('modal-overlay').classList.add('open');
+
+  ['m-custo','m-embalagem','m-extra','m-peso','m-altura','m-largura','m-comprimento'].forEach(fid => {
+    document.getElementById(fid).oninput = previewEdicao;
+  });
+  previewEdicao();
+}
+
+function previewEdicao() {
+  const p = catalog.find(x => x.id == _editId);
+  if (!p) return;
+  const custo = parseFloat(document.getElementById('m-custo').value) || 0;
+  const emb = parseFloat(document.getElementById('m-embalagem').value) || 1.5;
+  const extra=parseFloat(document.getElementById('m-extra').value)||0;
+
+  let pvNovo, lucroNovo, mcNovo;
+  if (p.plat === 'shopee') {
+    const r=calcPrecoShopee(custo,emb,extra);
+    pvNovo = r.pv; lucroNovo = r.lucro; mcNovo = r.mc;
+  } else {
+    const peso = parseFloat(document.getElementById('m-peso').value) || 0.3;
+    const alt  = parseFloat(document.getElementById('m-altura').value) || 10;
+    const lar  = parseFloat(document.getElementById('m-largura').value) || 10;
+    const comp = parseFloat(document.getElementById('m-comprimento').value) || 10;
+    const pesoC=Math.max(peso,(alt*lar*comp)/(CONFIG.divisor_cubico||6000));
+    const comissao = p.modalidade === 'Premium' ? CONFIG.ml_comissao_premium : CONFIG.ml_comissao_classico;
+    const r=calcPrecoML(custo,emb,pesoC,comissao,extra);
+    pvNovo = r.pv; lucroNovo = r.lucro; mcNovo = r.mc;
+  }
+
+  document.getElementById('m-preview').innerHTML =
+    `Novo preço: <b style="color:var(--text);">R$ ${fmt(pvNovo)}</b> · Margem: <b class="${mcClassFor(mcNovo)}">${(mcNovo*100).toFixed(1)}%</b> · Lucro: <b class="tag-pos">R$ ${fmt(lucroNovo)}</b>`;
+}
+
+async function salvarEdicao() {
+  const p = catalog.find(x => x.id == _editId);
+  if (!p) return;
+  const custo = parseFloat(document.getElementById('m-custo').value) || 0;
+  const emb = parseFloat(document.getElementById('m-embalagem').value) || 1.5;
+  const extra=parseFloat(document.getElementById('m-extra').value)||0;
+  p.custo = custo;
+  p.embalagem = emb;
+  p.extra=extra;
+
+  if (p.plat === 'shopee') {
+    const r=calcPrecoShopee(custo,emb,extra);
+    p.pv = r.pv; p.lucro = r.lucro; p.mc = r.mc;
+  } else {
+    p.peso = parseFloat(document.getElementById('m-peso').value) || 0.3;
+    p.alt  = parseFloat(document.getElementById('m-altura').value) || 10;
+    p.lar  = parseFloat(document.getElementById('m-largura').value) || 10;
+    p.comp = parseFloat(document.getElementById('m-comprimento').value) || 10;
+    const pesoC=Math.max(p.peso,(p.alt*p.lar*p.comp)/(CONFIG.divisor_cubico||6000));
+    const comissao = p.modalidade === 'Premium' ? CONFIG.ml_comissao_premium : CONFIG.ml_comissao_classico;
+    const r=calcPrecoML(custo,emb,pesoC,comissao,extra);
+    p.pv = r.pv; p.lucro = r.lucro; p.mc = r.mc;
+  }
+  p.pesoCubico=(p.alt*p.lar*p.comp)/(CONFIG.divisor_cubico||6000);p.pesoConsiderado=Math.max(p.peso,p.pesoCubico);const response=await fetch('/api/pricing/'+p.id,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({cost:p.custo,packagingCost:p.embalagem,extraCost:p.extra,weight:p.peso,height:p.alt,width:p.lar,length:p.comp,cubicWeight:p.pesoCubico,chargedWeight:p.pesoConsiderado,salePrice:p.pv,profit:p.lucro,margin:p.mc})});if(!response.ok){toast('Não foi possível atualizar','error');return}
+  fecharModal();
+  renderCatalog();
+  toast('Produto atualizado', 'success');
+}
+
+function fecharModal() {
+  document.getElementById('modal-overlay').classList.remove('open');
+  _editId = null;
+}
+
+// ============================================================
+// IMPORTAR CSV
+// ============================================================
+function parseCSVLine(line) {
+  return line.split(';').map(s => s.trim());
+}
+
+function handleCSV(evt) {
+  const file = evt.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const lines = e.target.result.split(/\r?\n/).filter(l => l.trim());
+    const headers = parseCSVLine(lines[0]).map(h => h.toLowerCase());
+    const rows = lines.slice(1).map(line => {
+      const cells = parseCSVLine(line);
+      const obj = {};
+      headers.forEach((h, i) => obj[h] = cells[i]);
+      return obj;
+    });
+    processarImportacao(rows);
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+
+function processarImportacao(rows) {
+  importResults = rows.map(row => {
+    const sku = row.sku || '';
+    const nome = row.nome || 'Produto';
+    const custo = parseFloat((row.custo||'0').replace(',','.')) || 0;
+    const emb = parseFloat((row.embalagem||'1.5').replace(',','.')) || 1.5;
+    const plat = (row.plataforma || 'ambas').toLowerCase();
+    const peso = parseFloat((row.peso||'0.3').replace(',','.')) || 0.3;
+    const alt = parseFloat((row.altura||'10').replace(',','.')) || 10;
+    const lar = parseFloat((row.largura||'10').replace(',','.')) || 10;
+    const comp = parseFloat((row.comprimento||'10').replace(',','.')) || 10;
+    const pesoCubico=(alt*lar*comp)/(CONFIG.divisor_cubico||6000),pesoConsiderado=Math.max(peso,pesoCubico),extra=parseFloat((row.custos_adicionais||'0').replace(',','.'))||0;
+
+    const mlClassico=(plat==='ml'||plat==='ambas')?calcPrecoML(custo,emb,pesoConsiderado,CONFIG.ml_comissao_classico,extra):null,mlPremium=(plat==='ml'||plat==='ambas')?calcPrecoML(custo,emb,pesoConsiderado,CONFIG.ml_comissao_premium,extra):null,spRes=(plat==='shopee'||plat==='ambas')?calcPrecoShopee(custo,emb,extra):null;
+
+    return{sku,nome,custo,embalagem:emb,extra,peso,alt,lar,comp,pesoCubico,pesoConsiderado,mlClassico,mlPremium,spRes};
+  });
+  renderImportPreview();
+}
+
+function renderImportPreview() {
+  let rows = '';
+  importResults.forEach(r => {
+    if (r.mlClassico) rows += `<tr>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${r.nome}</td>
+      <td>R$ ${fmt(r.custo)}</td>
+      <td><span class="badge badge-ml">ML Clássico</span></td>
+      <td><b>R$ ${fmt(r.mlClassico.pv)}</b></td>
+      <td class="${tagClassFor(r.mlClassico.mc)}">${(r.mlClassico.mc*100).toFixed(1)}%</td>
+      <td class="tag-pos">R$ ${fmt(r.mlClassico.lucro)}</td>
+    </tr>`;
+    if (r.mlPremium) rows += `<tr>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${r.nome}</td>
+      <td>R$ ${fmt(r.custo)}</td>
+      <td><span class="badge badge-ml">ML Premium</span></td>
+      <td><b>R$ ${fmt(r.mlPremium.pv)}</b></td>
+      <td class="${tagClassFor(r.mlPremium.mc)}">${(r.mlPremium.mc*100).toFixed(1)}%</td>
+      <td class="tag-pos">R$ ${fmt(r.mlPremium.lucro)}</td>
+    </tr>`;
+    if (r.spRes) rows += `<tr>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${r.nome}</td>
+      <td>R$ ${fmt(r.custo)}</td>
+      <td><span class="badge badge-shopee">Shopee</span></td>
+      <td><b>R$ ${fmt(r.spRes.pv)}</b></td>
+      <td class="${tagClassFor(r.spRes.mc)}">${(r.spRes.mc*100).toFixed(1)}%</td>
+      <td class="tag-pos">R$ ${fmt(r.spRes.lucro)}</td>
+    </tr>`;
+  });
+  document.getElementById('import-preview-body').innerHTML = rows;
+  document.getElementById('import-preview').style.display = 'block';
+}
+
+async function confirmarImportacao() {
+  const j=[];importResults.forEach(r=>{if(r.mlClassico)j.push(salvarRegistro(payloadCatalogo(r,r.mlClassico,'ml','Clássico')));if(r.mlPremium)j.push(salvarRegistro(payloadCatalogo(r,r.mlPremium,'ml','Premium')));if(r.spRes)j.push(salvarRegistro(payloadCatalogo(r,r.spRes,'shopee','')))});try{await Promise.all(j);await carregarCatalogo();toast(`${importResults.length} produto(s) importado(s)!`,'success')}catch{toast('Falha ao importar','error');return}
+  importResults = [];
+  document.getElementById('import-preview').style.display = 'none';
+  document.getElementById('csv-file').value = '';
+}
+
+function baixarModelo() {
+  const csv=`sku;nome;custo;embalagem;custos_adicionais;plataforma;peso;altura;largura;comprimento
+2051712;Aluminium Nitro 1,5L;0;1.5;0;ambas;1.7;32;12;12
+2008038;Removex 5L;30.11;2.5;0;ambas;5.3;32;19;14
+2050524;Politriz Rotativa;564.4;2;0;ml;3;52;18;18`;
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'modelo_precificador.csv';
+  a.click();
+}
+
+// ============================================================
+// CONFIGURAÇÕES
+// ============================================================
+function initConfigUI() {
+  document.getElementById('cfg-margem').value = (CONFIG.margem * 100).toFixed(1);
+  document.getElementById('cfg-imposto').value = (CONFIG.imposto * 100).toFixed(1);
+  document.getElementById('cfg-tacos').value=(CONFIG.tacos*100).toFixed(1);
+  document.getElementById('cfg-divisor').value=CONFIG.divisor_cubico;
+  document.getElementById('cfg-ml-classico').value = (CONFIG.ml_comissao_classico * 100).toFixed(1);
+  document.getElementById('cfg-ml-premium').value = (CONFIG.ml_comissao_premium * 100).toFixed(1);
+
+  const labels = { 0: '0 – 79,99', 80: '80 – 99,99', 100: '100 – 199,99', 200: '200 – 499,99', 500: 'Acima de 500' };
+  document.getElementById('shopee-table-config').innerHTML = CONFIG.shopee_faixas.map((f, i) =>
+    `<tr>
+      <td>R$ ${labels[f.min] || f.min}</td>
+      <td><input type="number" step="0.1" style="width:80px;" data-faixa="${i}" data-field="comissao" value="${(f.comissao*100).toFixed(1)}"></td>
+      <td><input type="number" step="0.5" style="width:80px;" data-faixa="${i}" data-field="fixa" value="${f.fixa}"></td>
+    </tr>`
+  ).join('');
+}
+
+async function salvarConfig() {
+  CONFIG.margem = (parseFloat(document.getElementById('cfg-margem').value) || 15) / 100;
+  CONFIG.imposto = (parseFloat(document.getElementById('cfg-imposto').value) || 5) / 100;
+  CONFIG.tacos=(parseFloat(document.getElementById('cfg-tacos').value)||0)/100;
+  CONFIG.divisor_cubico=parseFloat(document.getElementById('cfg-divisor').value)||6000;
+  CONFIG.ml_comissao_classico = (parseFloat(document.getElementById('cfg-ml-classico').value) || 12) / 100;
+  CONFIG.ml_comissao_premium = (parseFloat(document.getElementById('cfg-ml-premium').value) || 17) / 100;
+
+  document.querySelectorAll('#shopee-table-config input').forEach(input => {
+    const i = parseInt(input.dataset.faixa);
+    const field = input.dataset.field;
+    const val = parseFloat(input.value) || 0;
+    CONFIG.shopee_faixas[i][field] = field === 'comissao' ? val / 100 : val;
+  });
+
+  const r=await fetch('/api/pricing-config',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(CONFIG)});if(r.ok){atualizarResumoPeso();toast('Configurações salvas para toda a equipe!','success')}else toast('Não foi possível salvar','error');
+}
+
+async function resetConfig() {
+  CONFIG = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
+  initConfigUI();
+  await salvarConfig();toast('Configurações restauradas','success');
+}
+
+async function iniciar(){try{const r=await fetch('/api/pricing-config'),saved=r.ok?await r.json():null;if(saved)CONFIG={...CONFIG,...saved}}catch{}initConfigUI();atualizarResumoPeso();await carregarCatalogo()}iniciar();
+</script>
+</body>
+</html>

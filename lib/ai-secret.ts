@@ -1,0 +1,9 @@
+import {getRuntimeDb} from "../db/runtime";
+const secret=()=>((globalThis as typeof globalThis&{__AI_ENCRYPTION_KEY__?:string}).__AI_ENCRYPTION_KEY__||"").trim();
+const decode=(v:string)=>Uint8Array.from(atob(v.replace(/-/g,"+").replace(/_/g,"/")),(c)=>c.charCodeAt(0));
+const encode=(v:Uint8Array)=>btoa(String.fromCharCode(...v)).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+async function cryptoKey(){const raw=decode(secret());if(raw.length!==32)throw new Error("Proteção da IA não configurada.");return crypto.subtle.importKey("raw",raw,"AES-GCM",false,["encrypt","decrypt"])}
+async function init(){await getRuntimeDb().prepare("CREATE TABLE IF NOT EXISTS ai_settings (id INTEGER PRIMARY KEY, encrypted_key TEXT NOT NULL, iv TEXT NOT NULL, updated_by TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run()}
+export async function saveAiKey(value:string,user:string){await init();const iv=crypto.getRandomValues(new Uint8Array(12));const encrypted=new Uint8Array(await crypto.subtle.encrypt({name:"AES-GCM",iv},await cryptoKey(),new TextEncoder().encode(value)));await getRuntimeDb().prepare("INSERT INTO ai_settings(id,encrypted_key,iv,updated_by,updated_at) VALUES(1,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(id) DO UPDATE SET encrypted_key=excluded.encrypted_key,iv=excluded.iv,updated_by=excluded.updated_by,updated_at=CURRENT_TIMESTAMP").bind(encode(encrypted),encode(iv),user).run()}
+export async function getAiKey(){await init();const row=await getRuntimeDb().prepare("SELECT encrypted_key,iv FROM ai_settings WHERE id=1").first<{encrypted_key:string;iv:string}>();if(!row)return"";return new TextDecoder().decode(await crypto.subtle.decrypt({name:"AES-GCM",iv:decode(row.iv)},await cryptoKey(),decode(row.encrypted_key)))}
+export async function hasAiKey(){await init();return Boolean(await getRuntimeDb().prepare("SELECT id FROM ai_settings WHERE id=1").first())}

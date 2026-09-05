@@ -1,0 +1,37 @@
+import {NextResponse} from "next/server";
+import {requirePermission} from "../../../../../lib/auth";
+import {shopeeRequest} from "../../../../../lib/shopee";
+
+const exact:Record<string,string>={
+ "Sport shops":"Lojas de artigos esportivos","ric test":"Categoria de teste","Others":"Outros","Long Wallets":"Carteiras longas","Bifold & Trifold Wallets":"Carteiras dobráveis","Phone & Key Wallets":"Carteiras para celular e chaves","Coin Holders & Purses":"Porta-moedas e bolsas","Card Holders":"Porta-cartões","Laptop Backpacks":"Mochilas para notebook","Laptop Sleeves":"Capas para notebook","Laptop Bags & Cases":"Bolsas e maletas para notebook","Crossbody & Shoulder Bags":"Bolsas transversais e de ombro","Waist Bags & Chest Bags":"Pochetes e bolsas de peito","Clutches":"Bolsas de mão","Briefcases":"Pastas executivas","Tote Bags":"Bolsas tote",
+ "Automobiles":"Automóveis","Automotive":"Automotivo","Car Care":"Cuidados automotivos","Car Exterior Accessories":"Acessórios externos para carros","Car Interior Accessories":"Acessórios internos para carros","Car Electronics":"Eletrônicos automotivos","Motorcycles":"Motos","Motorcycle Accessories":"Acessórios para motos","Tools & Home Improvement":"Ferramentas e construção","Home & Living":"Casa e decoração","Health & Beauty":"Saúde e beleza","Men's Bags":"Bolsas masculinas","Women's Bags":"Bolsas femininas","Men's Shoes":"Calçados masculinos","Women's Shoes":"Calçados femininos","Mobile & Gadgets":"Celulares e acessórios","Computers & Accessories":"Computadores e acessórios","Sports & Outdoors":"Esportes e atividades ao ar livre","Toys, Kids & Babies":"Brinquedos, crianças e bebês","Food & Beverages":"Alimentos e bebidas","Pet Care":"Cuidados para animais","Stationery":"Papelaria","Travel & Luggage":"Viagem e bagagem"
+};
+const words:Record<string,string>={Accessories:"Acessórios",Accessory:"Acessório",Automotive:"Automotivo",Car:"Carro",Cars:"Carros",Motorcycle:"Moto",Motorcycles:"Motos",Cleaning:"Limpeza",Cleaner:"Limpador",Cleaners:"Limpadores",Care:"Cuidados",Tools:"Ferramentas",Tool:"Ferramenta",Equipment:"Equipamentos",Exterior:"Externo",Interior:"Interno",Wash:"Lavagem",Polish:"Polimento",Wax:"Cera",Waxes:"Ceras",Shampoo:"Xampu",Tires:"Pneus",Tire:"Pneu",Wheels:"Rodas",Wheel:"Roda",Engine:"Motor",Engines:"Motores",Glass:"Vidros",Paint:"Pintura",Protection:"Proteção",Bags:"Bolsas",Bag:"Bolsa",Wallets:"Carteiras",Wallet:"Carteira",Cases:"Estojos",Case:"Estojo",Holders:"Suportes",Holder:"Suporte",Others:"Outros",Other:"Outros",Home:"Casa",Sports:"Esportes",Outdoor:"Ar livre",Electronics:"Eletrônicos",Electrical:"Elétricos",Parts:"Peças",Part:"Peça",Safety:"Segurança",Maintenance:"Manutenção",Storage:"Armazenamento",Phone:"Celular",Mobile:"Celular",Computer:"Computador",Computers:"Computadores",Beauty:"Beleza",Health:"Saúde",Men:"Masculino",Women:"Feminino",Kids:"Infantil",Baby:"Bebê",Pets:"Animais",Pet:"Animal",Food:"Alimentos",Beverages:"Bebidas",Travel:"Viagem",Luggage:"Bagagem",Shoes:"Calçados",Clothing:"Roupas",Kitchen:"Cozinha",Office:"Escritório",Garden:"Jardim",Lighting:"Iluminação",Delivery:"Entrega",Standard:"Padrão",Express:"Expressa",Pickup:"Retirada",Seller:"Vendedor",Shipping:"Envio",Channel:"Canal"};
+const toPortuguese=(value:string)=>{
+ const clean=value.trim();if(!clean)return"Categoria Shopee";if(exact[clean])return exact[clean];if(/[^\u0000-\u024f]/.test(clean))return"Categoria de teste Shopee";
+ return clean.split(/(\s+|&|\/|-)/).map(part=>part==="&"?"e":words[part]||part).join("").replace(/\s+/g," ").trim();
+};
+const logisticNames:Record<string,string>={"Standard Delivery":"Entrega padrão","Shopee Supported Logistics":"Logística integrada Shopee","Other Logistics":"Outra transportadora","Seller's Own Fleet":"Entrega própria do vendedor","Instant Delivery":"Entrega imediata","Same Day Delivery":"Entrega no mesmo dia","Next Day Delivery":"Entrega no dia seguinte","Pickup":"Retirada","Correios":"Correios"};
+const isSystemCategory=(value:string)=>/^\s*\[|_|\btest\b|permit number|not.change|prohibit|zone\d|[^\u0000-\u024f]/i.test(value);
+
+export async function GET(request:Request){
+ await requirePermission("anuncios");
+ try{
+  const itemName=new URL(request.url).searchParams.get("itemName")?.trim().slice(0,120)||"";
+  const [categories,logisticResponse,recommendation]=await Promise.all([
+   shopeeRequest("/api/v2/product/get_category",{query:{language:"pt-BR"}}),
+   shopeeRequest("/api/v2/logistics/get_channel_list"),
+   itemName?shopeeRequest("/api/v2/product/category_recommend",{query:{item_name:itemName}}).catch(()=>null):Promise.resolve(null)
+  ]);
+  const rawCategories=((categories.response as any)?.category_list||[]).map((item:any)=>{const original=String(item.display_category_name||item.original_category_name||item.category_name||item.category_id);return{id:Number(item.category_id),name:toPortuguese(original),original,parentId:Number(item.parent_category_id)||0,hasChildren:Boolean(item.has_children)}});
+  const categoryById=new Map<number,any>(rawCategories.map((item:any)=>[item.id,item]));
+  const categoryPath=(leaf:any)=>{const names:string[]=[];let current:typeof leaf|undefined=leaf;const visited=new Set<number>();while(current&&!visited.has(current.id)&&names.length<8){visited.add(current.id);if(!isSystemCategory(current.original))names.unshift(current.name);current=current.parentId?categoryById.get(current.parentId):undefined}return names.join(" › ")||leaf.name};
+  let categoryList=rawCategories.filter((item:any)=>!item.hasChildren&&!isSystemCategory(item.original)).map(({original,...item}:any)=>({...item,name:categoryPath({...item,original})})).sort((a:any,b:any)=>a.name.localeCompare(b.name,"pt-BR"));
+  if(!categoryList.length){const fallback=rawCategories.find((item:any)=>!item.hasChildren);if(fallback)categoryList=[{id:fallback.id,name:"Categoria genérica para teste",parentId:fallback.parentId,hasChildren:false}]}
+  const recommendedResponse=(recommendation as any)?.response||recommendation||{},recommendedList=recommendedResponse.category_list||recommendedResponse.recommended_category_list||[];
+  let recommendedCategoryId=Number(recommendedResponse.category_id||recommendedList[0]?.category_id)||0;
+  if(!categoryList.some((item:any)=>item.id===recommendedCategoryId)&&itemName){const ignored=new Set(["para","com","sem","por","das","dos","uma","the","and","de","da","do","em","ml","litro","litros"]),terms=toPortuguese(itemName).toLocaleLowerCase("pt-BR").normalize("NFD").replace(/[\u0300-\u036f]/g,"").split(/[^a-z0-9]+/).filter(word=>word.length>2&&!ignored.has(word));let bestScore=0;for(const item of categoryList){const haystack=item.name.toLocaleLowerCase("pt-BR").normalize("NFD").replace(/[\u0300-\u036f]/g,"");const score=terms.reduce((total,word)=>total+(haystack.includes(word)?1:0),0);if(score>bestScore){bestScore=score;recommendedCategoryId=item.id}}}
+  const logisticList=((logisticResponse.response as any)?.logistics_channel_list||[]).filter((item:any)=>item.enabled!==false).map((item:any)=>{const original=String(item.logistics_channel_name||item.logistic_name||"Canal de envio");return{id:Number(item.logistics_channel_id||item.logistic_id),name:logisticNames[original]||toPortuguese(original)}});
+  return NextResponse.json({categories:categoryList,logistics:logisticList,recommendedCategoryId});
+ }catch(error){return NextResponse.json({error:error instanceof Error?error.message:"Não foi possível consultar a Shopee."},{status:400})}
+}
