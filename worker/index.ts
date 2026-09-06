@@ -8,6 +8,8 @@ interface Env {
   BUCKET: R2Bucket;
   OPENAI_API_KEY?: string;
   AI_ENCRYPTION_KEY?: string;
+  SUPABASE_URL?: string;
+  SUPABASE_SERVICE_ROLE_KEY?: string;
   IMAGES: {
     input(stream: ReadableStream): {
       transform(options: Record<string, unknown>): {
@@ -34,6 +36,8 @@ const worker = {
     (globalThis as typeof globalThis & { __FG_BUCKET__?: R2Bucket }).__FG_BUCKET__ = env.BUCKET;
     (globalThis as typeof globalThis & { __OPENAI_API_KEY__?: string }).__OPENAI_API_KEY__ = env.OPENAI_API_KEY;
     (globalThis as typeof globalThis & { __AI_ENCRYPTION_KEY__?: string }).__AI_ENCRYPTION_KEY__ = env.AI_ENCRYPTION_KEY;
+    (globalThis as typeof globalThis & { __SUPABASE_URL__?: string }).__SUPABASE_URL__ = env.SUPABASE_URL;
+    (globalThis as typeof globalThis & { __SUPABASE_SERVICE_ROLE_KEY__?: string }).__SUPABASE_SERVICE_ROLE_KEY__ = env.SUPABASE_SERVICE_ROLE_KEY;
     const url = new URL(request.url);
 
     if (url.pathname === "/_vinext/image") {

@@ -1,5 +1,6 @@
 import {getRuntimeDb} from "../db/runtime";
 import {blingApi} from "./bling";
+import {fetchAllRows,getSupabase} from "./supabase";
 
 type AnyRecord=Record<string,unknown>;
 const record=(v:unknown):AnyRecord=>v&&typeof v==="object"&&!Array.isArray(v)?v as AnyRecord:{};
@@ -80,13 +81,22 @@ export async function syncAllProducts(){
  return {imported};
 }
 
-/** Fills last_sale_at from cmv_sales (already populated by the CMV sync/webhook) so "produtos
- *  parados" alerts don't need a second trip to Bling. */
+/** Fills last_sale_at from cmv_sales (Supabase, Etapa 2 — já populado pelo sync/webhook do CMV)
+ *  so "produtos parados" alerts don't need a second trip to Bling. */
 async function syncLastSaleDates(){
+ const rows=await fetchAllRows<{product_id:string;sale_date:string}>((from_,to_)=>
+  getSupabase().from("cmv_sales").select("product_id,sale_date").range(from_,to_)
+ ).catch(()=>[] as {product_id:string;sale_date:string}[]);
+ const lastByProduct=new Map<string,string>();
+ for(const row of rows){
+  if(!row.product_id)continue;
+  const current=lastByProduct.get(row.product_id);
+  if(!current||row.sale_date>current)lastByProduct.set(row.product_id,row.sale_date);
+ }
  const db=getRuntimeDb();
- const hasCmv=await db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='cmv_sales'").first();
- if(!hasCmv)return;
- await db.prepare(`UPDATE products SET last_sale_at=COALESCE((SELECT MAX(sale_date) FROM cmv_sales WHERE cmv_sales.product_id=products.bling_product_id),last_sale_at)`).run().catch(()=>{});
+ for(const [productId,lastSaleAt] of lastByProduct){
+  await db.prepare("UPDATE products SET last_sale_at=? WHERE bling_product_id=?").bind(lastSaleAt,productId).run().catch(()=>{});
+ }
 }
 
 /** One product's stock/cost/price refreshed from Bling — called by the webhook dispatcher for
