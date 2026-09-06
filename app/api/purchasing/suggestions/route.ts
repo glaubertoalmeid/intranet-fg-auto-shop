@@ -1,26 +1,37 @@
 import {NextResponse} from "next/server";
 import {requirePermission} from "../../../../lib/auth";
-import {getRuntimeDb} from "../../../../db/runtime";
-import {initSuppliers} from "../../../../lib/suppliers";
 import {suggestPurchaseQuantity} from "../../../../lib/purchasing";
+import {fetchAllRows,getSupabase} from "../../../../lib/supabase";
 
-type Row={id:number;bling_product_id:string;sku:string;name:string;cost:number;stock_physical:number;min_stock:number;supplier_id:number|null;supplier_name:string|null;lead_time_days:number|null;qty30:number};
+type ProductRow={id:number;bling_product_id:string;sku:string;name:string;cost:number;stock_physical:number;min_stock:number;supplier_id:number|null;status:string};
+type Row=ProductRow&{supplier_name:string|null;lead_time_days:number|null;qty30:number};
 
 export async function GET(){
  try{
-  await requirePermission("compras");await initSuppliers();
-  const hasCmv=await getRuntimeDb().prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='cmv_sales'").first();
-  const salesJoin=hasCmv?"LEFT JOIN (SELECT product_id,SUM(quantity) qty30 FROM cmv_sales WHERE sale_date>=date('now','-30 day') GROUP BY product_id) s ON s.product_id=products.bling_product_id":"";
-  const rows=(await getRuntimeDb().prepare(`SELECT products.id,products.bling_product_id,products.sku,products.name,products.cost,products.stock_physical,products.min_stock,products.supplier_id,suppliers.name supplier_name,suppliers.lead_time_days,COALESCE(s.qty30,0) qty30
-    FROM products LEFT JOIN suppliers ON suppliers.id=products.supplier_id ${salesJoin}
-    WHERE products.status='ativo'`).all<Row>()).results||[];
+  await requirePermission("compras");
+  const supabase=getSupabase();
+  const [products,{data:suppliers,error:suppliersError},cmvRows]=await Promise.all([
+   fetchAllRows<ProductRow>((from_,to_)=>supabase.from("products").select("id,bling_product_id,sku,name,cost,stock_physical,min_stock,supplier_id,status").eq("status","ativo").range(from_,to_)),
+   supabase.from("suppliers").select("id,name,lead_time_days"),
+   fetchAllRows<{product_id:string;quantity:number}>((from_,to_)=>supabase.from("cmv_sales").select("product_id,quantity").gte("sale_date",new Date(Date.now()-30*86400000).toISOString().slice(0,10)).range(from_,to_)),
+  ]);
+  if(suppliersError)throw new Error(suppliersError.message);
 
-  const suggestions=rows.map((r:Row)=>{
+  const supplierById=new Map((suppliers||[]).map(s=>[s.id,s]));
+  const qty30ByProduct=new Map<string,number>();
+  for(const row of cmvRows)qty30ByProduct.set(row.product_id,(qty30ByProduct.get(row.product_id)||0)+(Number(row.quantity)||0));
+
+  const rows:Row[]=products.map(p=>{
+   const supplier=p.supplier_id?supplierById.get(p.supplier_id):null;
+   return {...p,supplier_name:supplier?.name||null,lead_time_days:supplier?.lead_time_days??null,qty30:qty30ByProduct.get(p.bling_product_id)||0};
+  });
+
+  const suggestions=rows.map(r=>{
    const avgDailySales=r.qty30/30;
    const leadTimeDays=r.lead_time_days??7; // sem fornecedor vinculado, assume 7 dias como padrão conservador
    const suggestedQuantity=suggestPurchaseQuantity({stockPhysical:r.stock_physical,avgDailySales,leadTimeDays,minStock:r.min_stock});
    return {...r,avgDailySales:Number(avgDailySales.toFixed(2)),suggestedQuantity,estimatedCost:suggestedQuantity*r.cost};
-  }).filter((r:{suggestedQuantity:number})=>r.suggestedQuantity>0);
+  }).filter(r=>r.suggestedQuantity>0);
 
   const bySupplier=new Map<string,{supplierId:number|null;supplierName:string;items:typeof suggestions;totalCost:number}>();
   for(const s of suggestions){

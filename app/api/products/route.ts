@@ -1,7 +1,6 @@
 import {NextResponse} from "next/server";
 import {requirePermission} from "../../../lib/auth";
-import {getRuntimeDb} from "../../../db/runtime";
-import {initProducts,syncAllProducts,computeAlerts,classifyAbc} from "../../../lib/products";
+import {syncAllProducts,computeAlerts,classifyAbc} from "../../../lib/products";
 import {logAudit} from "../../../lib/audit";
 import {fetchAllRows,getSupabase} from "../../../lib/supabase";
 
@@ -32,18 +31,18 @@ async function salesAggregatesByProduct(){
 export async function GET(request:Request){
  try{
   await requirePermission("produtos");
-  await initProducts();
   const url=new URL(request.url);
   const q=text(url.searchParams.get("q")),brand=text(url.searchParams.get("brand")),category=text(url.searchParams.get("category")),alert=text(url.searchParams.get("alert"));
 
-  const where:string[]=[],binds:unknown[]=[];
-  if(q){where.push("(products.name LIKE ? OR products.sku LIKE ? OR products.gtin LIKE ?)");binds.push(`%${q}%`,`%${q}%`,`%${q}%`)}
-  if(brand){where.push("products.brand=?");binds.push(brand)}
-  if(category){where.push("products.category=?");binds.push(category)}
-  const clause=where.length?`WHERE ${where.join(" AND ")}`:"";
-
   const salesByProduct=await salesAggregatesByProduct();
-  const baseRows=(await getRuntimeDb().prepare(`SELECT products.id,products.bling_product_id,products.sku,products.name,products.brand,products.category,products.supplier,products.cost,products.sale_price,products.stock_physical,products.min_stock,products.max_stock,products.location,products.status,products.last_sale_at FROM products ${clause} ORDER BY products.name`).bind(...binds).all<Omit<Row,"qty30"|"qty60"|"qty90"|"revenue90">>()).results||[];
+  const supabase=getSupabase();
+  const baseRows=await fetchAllRows<Omit<Row,"qty30"|"qty60"|"qty90"|"revenue90">>((from_,to_)=>{
+   let query=supabase.from("products").select("id,bling_product_id,sku,name,brand,category,supplier,cost,sale_price,stock_physical,min_stock,max_stock,location,status,last_sale_at").order("name").range(from_,to_);
+   if(q)query=query.or(`name.ilike.%${q}%,sku.ilike.%${q}%,gtin.ilike.%${q}%`);
+   if(brand)query=query.eq("brand",brand);
+   if(category)query=query.eq("category",category);
+   return query;
+  });
   const rows:Row[]=baseRows.map(r=>{const s=salesByProduct.get(r.bling_product_id);return{...r,qty30:s?.qty30??0,qty60:s?.qty60??0,qty90:s?.qty90??0,revenue90:s?.revenue90??0}});
 
   const withAbc=classifyAbc<Row&{revenue:number}>(rows.map((r:Row)=>({...r,revenue:r.revenue90})));
