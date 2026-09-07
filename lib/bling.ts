@@ -1,5 +1,6 @@
 import {getRuntimeDb} from "../db/runtime";
 import {initMercadoLivre,randomUrlSafe} from "./mercado-livre";
+import {SITE_URL} from "./site-url";
 
 export type BlingConfig={
  clientId:string;
@@ -33,8 +34,8 @@ export async function saveBlingConfig(values:Partial<BlingConfig>,user:string){
  ON CONFLICT(provider) DO UPDATE SET encrypted_data=excluded.encrypted_data,updated_by=excluded.updated_by,updated_at=CURRENT_TIMESTAMP`).bind(encrypted,user).run();
 }
 
-export const blingCallbackUrl="https://intranet-fg-auto-shop.glaubertoalmeid.chatgpt.site/api/marketplaces/bling/callback";
-export const blingWebhookUrl="https://intranet-fg-auto-shop.glaubertoalmeid.chatgpt.site/api/marketplaces/bling/webhooks";
+export const blingCallbackUrl=`${SITE_URL}/api/marketplaces/bling/callback`;
+export const blingWebhookUrl=`${SITE_URL}/api/marketplaces/bling/webhooks`;
 
 export async function getBlingAccessToken(){
  const config=await getBlingConfig();

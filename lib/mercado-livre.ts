@@ -1,4 +1,5 @@
 import {getRuntimeDb} from "../db/runtime";
+import {SITE_URL} from "./site-url";
 
 type MercadoLivreConfig={
   clientId:string;
@@ -68,7 +69,7 @@ export async function saveMercadoLivreConfig(values:Partial<MercadoLivreConfig>,
     .bind(encrypted,user).run();
 }
 
-export const mercadoLivreCallbackUrl="https://intranet-fg-auto-shop.glaubertoalmeid.chatgpt.site/api/marketplaces/mercado-livre/callback";
+export const mercadoLivreCallbackUrl=`${SITE_URL}/api/marketplaces/mercado-livre/callback`;
 
 export function randomUrlSafe(bytes=32){
   return encode(crypto.getRandomValues(new Uint8Array(bytes)));

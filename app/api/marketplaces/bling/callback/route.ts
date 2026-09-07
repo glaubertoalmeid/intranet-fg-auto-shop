@@ -1,8 +1,9 @@
 import {NextResponse} from "next/server";
 import {getRuntimeDb} from "../../../../../db/runtime";
 import {blingCallbackUrl,getBlingConfig,initBling,saveBlingConfig} from "../../../../../lib/bling";
+import {SITE_URL} from "../../../../../lib/site-url";
 
-const home=(result:string)=>NextResponse.redirect(`https://intranet-fg-auto-shop.glaubertoalmeid.chatgpt.site/?bling=${encodeURIComponent(result)}`);
+const home=(result:string)=>NextResponse.redirect(`${SITE_URL}/?bling=${encodeURIComponent(result)}`);
 export async function GET(request:Request){
  await initBling();
  const url=new URL(request.url),code=url.searchParams.get("code")||"",state=url.searchParams.get("state")||"";

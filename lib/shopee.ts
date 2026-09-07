@@ -1,4 +1,5 @@
 import {getRuntimeDb} from "../db/runtime";
+import {SITE_URL} from "./site-url";
 
 export type ShopeeConfig={environment:"sandbox"|"production";partnerId:string;partnerKey:string;shopId:string;accessToken:string;refreshToken:string;tokenExpiresAt:string;lastError:string};
 const empty:ShopeeConfig={environment:"sandbox",partnerId:"",partnerKey:"",shopId:"",accessToken:"",refreshToken:"",tokenExpiresAt:"",lastError:""};
@@ -30,8 +31,8 @@ export async function saveShopeeConfig(values:Partial<ShopeeConfig>,user:string)
  await writeStored(`shopee_${environment}`,next,user);await writeStored("shopee_active",{environment},user);
 }
 
-export const shopeeCallbackUrl="https://intranet-fg-auto-shop.glaubertoalmeid.chatgpt.site/api/marketplaces/shopee/callback";
-export const shopeeHomeUrl="https://intranet-fg-auto-shop.glaubertoalmeid.chatgpt.site/";
+export const shopeeCallbackUrl=`${SITE_URL}/api/marketplaces/shopee/callback`;
+export const shopeeHomeUrl=`${SITE_URL}/`;
 export const shopeeHosts={sandbox:{partner:"https://openplatform.sandbox.test-stable.shopee.sg",api:"https://openplatform.sandbox.test-stable.shopee.sg"},production:{partner:"https://openplatform.shopee.com.br",api:"https://openplatform.shopee.com.br"}};
 export function randomShopeeState(){return encode(crypto.getRandomValues(new Uint8Array(24)))}
 export async function shopeeSign(partnerKey:string,base:string){const key=await crypto.subtle.importKey("raw",new TextEncoder().encode(partnerKey),{name:"HMAC",hash:"SHA-256"},false,["sign"]);const signature=new Uint8Array(await crypto.subtle.sign("HMAC",key,new TextEncoder().encode(base)));return Array.from(signature,byte=>byte.toString(16).padStart(2,"0")).join("")}

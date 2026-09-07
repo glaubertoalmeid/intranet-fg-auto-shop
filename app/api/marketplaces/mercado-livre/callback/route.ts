@@ -1,8 +1,9 @@
 import {NextResponse} from "next/server";
 import {getRuntimeDb} from "../../../../../db/runtime";
 import {getMercadoLivreConfig,initMercadoLivre,mercadoLivreCallbackUrl,saveMercadoLivreConfig} from "../../../../../lib/mercado-livre";
+import {SITE_URL} from "../../../../../lib/site-url";
 
-const home=(result:string)=>NextResponse.redirect(`https://intranet-fg-auto-shop.glaubertoalmeid.chatgpt.site/?ml=${encodeURIComponent(result)}`);
+const home=(result:string)=>NextResponse.redirect(`${SITE_URL}/?ml=${encodeURIComponent(result)}`);
 
 export async function GET(request:Request){
   await initMercadoLivre();

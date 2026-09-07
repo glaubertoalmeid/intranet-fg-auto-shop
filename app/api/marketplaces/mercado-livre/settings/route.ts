@@ -2,6 +2,7 @@ import {NextResponse} from "next/server";
 import {requirePermission} from "../../../../../lib/auth";
 import {getMercadoLivreConfig,mercadoLivreCallbackUrl,saveMercadoLivreConfig} from "../../../../../lib/mercado-livre";
 import {logAudit} from "../../../../../lib/audit";
+import {SITE_URL} from "../../../../../lib/site-url";
 
 export async function GET(){
   await requirePermission("anuncios");
@@ -14,7 +15,7 @@ export async function GET(){
     lastError:config.lastError,
     tokenExpiresAt:config.tokenExpiresAt,
     callbackUrl:mercadoLivreCallbackUrl,
-    notificationUrl:"https://intranet-fg-auto-shop.glaubertoalmeid.chatgpt.site/api/marketplaces/mercado-livre/notifications"
+    notificationUrl:`${SITE_URL}/api/marketplaces/mercado-livre/notifications`
   });
 }
 
