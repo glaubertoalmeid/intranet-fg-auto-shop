@@ -23,18 +23,25 @@ const mapProduct=(p:AnyRecord)=>({
  status:text(p.situacao)==="I"?"inativo":"ativo",
 });
 
+// O Workers tem um teto de sub-requisições por execução (50 no plano gratuito da
+// Cloudflare) — cada chamada ao Bling ou ao Supabase conta. Cada página gasta 2 (lista +
+// upsert), então esse teto cobre uns 20 mil produtos antes de truncar; ainda assim, para
+// catálogos enormes, o usuário precisa clicar em Sincronizar de novo pra pegar o resto.
+const SUBREQUEST_BUDGET=42;
+
 /** Pulls the full catalog from Bling and upserts every product into Supabase's products table.
  *  Existing local-only fields (minStock, maxStock, location, supplierId) are preserved on update
  *  because they aren't part of this upsert payload. */
 export async function syncAllProducts(){
  const supabase=getSupabase();
- let page=1,imported=0;
+ let page=1,imported=0,spent=0,truncated=false;
  while(page<=100){
-  const result=await blingApi(`/produtos?pagina=${page}&limite=100`);
+  if(spent>=SUBREQUEST_BUDGET){truncated=true;break}
+  const result=await blingApi(`/produtos?pagina=${page}&limite=100`);spent++;
   const rows=list(result.data).map(record);
   const payload=rows.map(mapProduct).filter(p=>p.bling_product_id&&p.name).map(p=>({...p,synced_at:new Date().toISOString()}));
   if(payload.length){
-   const {error}=await supabase.from("products").upsert(payload,{onConflict:"bling_product_id"});
+   const {error}=await supabase.from("products").upsert(payload,{onConflict:"bling_product_id"});spent++;
    if(error)throw new Error(error.message);
    imported+=payload.length;
   }
@@ -42,7 +49,7 @@ export async function syncAllProducts(){
   page++;
  }
  await syncLastSaleDates();
- return {imported};
+ return {imported,truncated};
 }
 
 /** One product's stock/cost/price refreshed from Bling — called by the webhook dispatcher for
@@ -69,9 +76,13 @@ async function syncLastSaleDates(){
   const current=lastByProduct.get(row.product_id);
   if(!current||row.sale_date>current)lastByProduct.set(row.product_id,row.sale_date);
  }
- for(const [productId,lastSaleAt] of lastByProduct){
-  await supabase.from("products").update({last_sale_at:lastSaleAt}).eq("bling_product_id",productId);
- }
+ if(!lastByProduct.size)return;
+ // Uma chamada só via função no Postgres, em vez de um update por produto — do contrário
+ // um catálogo com poucas centenas de produtos vendidos já estoura o teto de
+ // sub-requisições do Worker (mesmo problema do sync de vendas, ver SUBREQUEST_BUDGET).
+ const updates=[...lastByProduct].map(([bling_product_id,last_sale_at])=>({bling_product_id,last_sale_at}));
+ const {error}=await supabase.rpc("bulk_update_last_sale_at",{updates});
+ if(error)throw new Error(error.message);
 }
 
 export type ProductAlert="zerado"|"abaixo_minimo"|"excesso"|"parado_30"|"parado_60"|"parado_90";
