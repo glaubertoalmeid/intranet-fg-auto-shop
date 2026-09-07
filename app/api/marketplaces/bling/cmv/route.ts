@@ -15,33 +15,64 @@ type CmvSaleRow={sale_id:string;item_id:string;product_id:string;sku:string;prod
 type CostInfo={cost:number;brand:string;category:string};
 
 // O Workers tem um teto de sub-requisições por execução (50 no plano gratuito da
-// Cloudflare) — cada chamada ao Bling ou ao Supabase conta. Reserva uma margem pras
-// páginas da listagem e o upsert final, e para de puxar vendas novas antes de estourar.
-const SUBREQUEST_BUDGET=42;
+// Cloudflare) — cada chamada ao Bling ou ao Supabase conta (D1 via binding não conta,
+// mas todo fetch externo conta). O teto anterior só era checado antes de começar cada
+// *venda* — um pedido com muitos itens sem custo registrado podia sozinho estourar o
+// limite no meio do processamento. Agora toda chamada de rede passa por budget.use()
+// e o código nunca faz uma chamada sem antes checar budget.ok.
+class Budget{
+ spent=0;
+ constructor(private cap:number){}
+ get ok(){return this.spent<this.cap}
+ use(){this.spent++}
+}
 
-async function costLookup(productId:string,cache:Map<string,CostInfo>,spend:()=>void):Promise<CostInfo>{
+async function costLookup(productId:string,cache:Map<string,CostInfo>,budget:Budget):Promise<CostInfo>{
  const cached=cache.get(productId);if(cached)return cached;
- spend();
  const info:CostInfo={cost:0,brand:"",category:""};
- try{
-  const p=record((await blingApi(`/produtos/${productId}`)).data);
-  info.cost=num(p.precoCusto||p.custo||record(p.fornecedor).precoCusto);
-  info.brand=text(record(p.marca).descricao||p.marca);
-  info.category=text(record(p.categoria).descricao||p.categoria);
- }catch{/* mantém custo zerado e sinaliza estimativa */}
+ if(budget.ok){
+  budget.use();
+  try{
+   const p=record((await blingApi(`/produtos/${productId}`)).data);
+   info.cost=num(p.precoCusto||p.custo||record(p.fornecedor).precoCusto);
+   info.brand=text(record(p.marca).descricao||p.marca);
+   info.category=text(record(p.categoria).descricao||p.categoria);
+  }catch{/* mantém custo zerado e sinaliza estimativa */}
+ }
  cache.set(productId,info);
  return info;
 }
 
-async function saleRows(saleId:string,summary:AnyRecord,cache:Map<string,CostInfo>,spend:()=>void):Promise<CmvSaleRow[]>{
- spend();
+/** loja/vendedor no pedido só trazem {id} — o nome vem de endpoints à parte
+ *  (/canais-venda e /vendedores). Busca cada um uma única vez por execução e cacheia. */
+async function nameLookup(endpoint:string,extractName:(row:AnyRecord)=>string,budget:Budget):Promise<Map<string,string>>{
+ const map=new Map<string,string>();
+ let page=1;
+ while(page<=10&&budget.ok){
+  budget.use();
+  const result=await blingApi(`/${endpoint}?pagina=${page}&limite=100`);
+  const rows=list(result.data).map(record);
+  for(const row of rows){const id=text(row.id);const name=extractName(row);if(id&&name)map.set(id,name)}
+  if(rows.length<100)break;
+  page++;
+ }
+ return map;
+}
+const channelsLookup=(budget:Budget)=>nameLookup("canais-venda",row=>text(row.descricao),budget);
+const sellersLookup=(budget:Budget)=>nameLookup("vendedores",row=>text(record(row.contato).nome),budget);
+
+async function saleRows(saleId:string,summary:AnyRecord,cache:Map<string,CostInfo>,channels:Map<string,string>,sellers:Map<string,string>,budget:Budget):Promise<CmvSaleRow[]>{
+ if(!budget.ok)throw new Error("Sem orçamento de sub-requisições sobrando nesta execução.");
+ budget.use();
  const detail=record((await blingApi(`/pedidos/vendas/${saleId}`)).data),items=list(detail.itens).map(record);
- const saleDate=text(detail.data||summary.data).slice(0,10),channel=text(record(detail.loja).descricao||record(detail.loja).nome||record(summary.loja).descricao),seller=text(record(detail.vendedor).nome||record(summary.vendedor).nome),customerName=text(record(detail.contato).nome||record(summary.contato).nome);
+ const saleDate=text(detail.data||summary.data).slice(0,10);
+ const channelId=text(record(detail.loja).id||record(summary.loja).id),sellerId=text(record(detail.vendedor).id||record(summary.vendedor).id);
+ const channel=channels.get(channelId)||"",seller=sellers.get(sellerId)||"",customerName=text(record(detail.contato).nome||record(summary.contato).nome);
  const rows:CmvSaleRow[]=[];
  for(let index=0;index<items.length;index++){
   const item=items[index],product=record(item.produto),productId=text(product.id),quantity=num(item.quantidade),unitPrice=num(item.valor||item.preco||item.valorUnitario),discount=num(item.desconto),revenue=Math.max(0,quantity*unitPrice-discount);
   let cost=num(item.valorCusto||item.custo);let brand="",category="";const estimated=cost<=0;
-  if(productId&&estimated){const info=await costLookup(productId,cache,spend);cost=info.cost;brand=info.brand;category=info.category}
+  if(productId&&estimated){const info=await costLookup(productId,cache,budget);cost=info.cost;brand=info.brand;category=info.category}
   rows.push({sale_id:saleId,item_id:text(item.id||index),product_id:productId,sku:text(item.codigo||product.codigo),product_name:text(item.descricao||product.nome),quantity,revenue,cost,cost_estimated:estimated,sale_date:saleDate,channel,seller,brand,category,customer_name:customerName});
  }
  return rows;
@@ -50,43 +81,64 @@ async function saleRows(saleId:string,summary:AnyRecord,cache:Map<string,CostInf
 /** Pulls sales for a date range, skips ones already imported (fica barato reprocessar o
  *  período: cada clique em "Sincronizar" avança nas vendas novas até o teto de
  *  sub-requisições, sem reimportar o que já está no Supabase), e grava tudo num único
- *  upsert em lote. */
+ *  upsert em lote. Um pedido que falhe (erro do Bling, dado inesperado) não derruba os
+ *  outros já processados na mesma execução — antes um erro no meio do loop perdia o lote
+ *  inteiro, porque a exceção interrompia antes do upsert final. */
 export async function syncSalesRange(from:string,to:string){
- let page=1;const sales:AnyRecord[]=[];
- while(page<=10){const result=await blingApi(`/pedidos/vendas?pagina=${page}&limite=100&dataInicial=${from}&dataFinal=${to}`),batch=list(result.data).map(record);sales.push(...batch);if(batch.length<100)break;page++}
+ // Cap conservador (bem abaixo do teto real de 50) porque toda chamada — listagem,
+ // checagem de já-sincronizado, canais, vendedores, detalhe de cada venda, custo de
+ // cada item novo, e o upsert final — soma pro mesmo orçamento desta execução.
+ const budget=new Budget(38);
+ let page=1;const sales:AnyRecord[]=[];let listTruncated=false;
+ while(page<=10){
+  if(!budget.ok){listTruncated=true;break}
+  budget.use();
+  const result=await blingApi(`/pedidos/vendas?pagina=${page}&limite=100&dataInicial=${from}&dataFinal=${to}`),batch=list(result.data).map(record);
+  sales.push(...batch);
+  if(batch.length<100)break;
+  page++;
+ }
 
  const supabase=getSupabase();
  const alreadySynced=new Set<string>();
- if(sales.length){
+ if(sales.length&&budget.ok){
+  budget.use();
   const existing=await fetchAllRows<{sale_id:string}>((from_,to_)=>supabase.from("cmv_sales").select("sale_id").gte("sale_date",from).lte("sale_date",to).range(from_,to_));
   for(const row of existing)alreadySynced.add(row.sale_id);
  }
  const pending=sales.filter(s=>!alreadySynced.has(text(s.id)));
 
- let spent=0;const spend=()=>{spent++};
+ const [channels,sellers]=await Promise.all([channelsLookup(budget),sellersLookup(budget)]);
  const cache=new Map<string,CostInfo>();
  const allRows:CmvSaleRow[]=[];
+ const failed:{saleId:string;error:string}[]=[];
  let processed=0;
  for(const summary of pending){
-  if(spent>=SUBREQUEST_BUDGET)break;
+  if(!budget.ok)break;
   const saleId=text(summary.id);if(!saleId)continue;
-  allRows.push(...await saleRows(saleId,summary,cache,spend));
-  processed++;
+  try{
+   allRows.push(...await saleRows(saleId,summary,cache,channels,sellers,budget));
+   processed++;
+  }catch(error){
+   failed.push({saleId,error:error instanceof Error?error.message:"erro desconhecido"});
+  }
  }
 
  if(allRows.length){
   const {error}=await supabase.from("cmv_sales").upsert(allRows,{onConflict:"sale_id,item_id"});
   if(error)throw new Error(error.message);
  }
- const remaining=pending.length-processed;
- return {sales:sales.length,newSales:processed,alreadySynced:alreadySynced.size,items:allRows.length,truncated:remaining>0,remaining};
+ const remaining=pending.length-processed-failed.length;
+ return {sales:sales.length,newSales:processed,alreadySynced:alreadySynced.size,items:allRows.length,truncated:listTruncated||remaining>0,remaining,failed};
 }
 
 /** Um único pedido — usado pelo webhook do Bling pra manter o CMV em dia em tempo real
  *  a cada venda nova, sem depender do sync manual por período. */
 export async function syncSingleSale(saleId:string,summary:AnyRecord={}){
+ const budget=new Budget(38);
+ const [channels,sellers]=await Promise.all([channelsLookup(budget),sellersLookup(budget)]);
  const cache=new Map<string,CostInfo>();
- const rows=await saleRows(saleId,summary,cache,()=>{});
+ const rows=await saleRows(saleId,summary,cache,channels,sellers,budget);
  if(!rows.length)return 0;
  const {error}=await getSupabase().from("cmv_sales").upsert(rows,{onConflict:"sale_id,item_id"});
  if(error)throw new Error(error.message);
@@ -99,7 +151,7 @@ export async function POST(request:Request){
   const body=await request.json().catch(()=>({})) as {from?:string;to?:string};
   const now=new Date(),to=isDate(body.to||"")?body.to!:now.toISOString().slice(0,10),fallback=new Date(now.getTime()-31*86400000).toISOString().slice(0,10),from=isDate(body.from||"")?body.from!:fallback;
   const result=await syncSalesRange(from,to);
-  await logAudit({user:user.name,action:"cmv.sync",target:`${from}..${to}`,detail:`${result.newSales} venda(s) nova(s), ${result.items} item(ns)${result.truncated?` · ${result.remaining} venda(s) restando, clique em Sincronizar de novo`:""}`});
+  await logAudit({user:user.name,action:"cmv.sync",target:`${from}..${to}`,detail:`${result.newSales} venda(s) nova(s), ${result.items} item(ns)${result.truncated?` · ${result.remaining} venda(s) restando, clique em Sincronizar de novo`:""}${result.failed.length?` · falhou: ${result.failed.map(f=>`#${f.saleId} (${f.error})`).join(", ")}`:""}`});
   return NextResponse.json({ok:true,...result,from,to});
  }catch(error){return NextResponse.json({error:error instanceof Error?error.message:"Não foi possível sincronizar as vendas."},{status:500})}
 }
