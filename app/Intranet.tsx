@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import ListingCatalogView from "./ListingCatalogView";
 import CnpjLookupView from "./CnpjLookupView";
 import CmvReportView from "./CmvReportView";
@@ -48,6 +48,7 @@ export default function Intranet() {
   const [eventOpen,setEventOpen] = useState(false);
   const [editingEvent,setEditingEvent] = useState<EventItem|null>(null);
   const [menuOpen,setMenuOpen] = useState(false);
+  const [deepLink,setDeepLink] = useState<{productId?:number;orderId?:number;supplierId?:number}>({});
 
   async function loadAuth(){
     try {
@@ -100,6 +101,11 @@ export default function Intranet() {
   async function removeTask(id:number){ await fetch(`/api/tasks/${id}`,{method:"DELETE"}); setTasks(v=>v.filter(t=>t.id!==id)); }
   async function removeEvent(id:number){ await fetch(`/api/events/${id}`,{method:"DELETE"}); setEvents(v=>v.filter(e=>e.id!==id)); }
 
+  function goToProduct(id:number){setDeepLink({productId:id});setSection("produtos")}
+  function goToSupplier(id:number){setDeepLink({supplierId:id});setSection("compras")}
+  function goToOrder(id:number){setDeepLink({orderId:id});setSection("compras")}
+  function goToTask(){setSection("tarefas")}
+
   if(authLoading)return <div className="auth-screen"><div className="loading">Verificando acesso…</div></div>;
   if(!auth)return <AuthScreen setupRequired={setupRequired} onAuthenticated={loadAuth}/>;
   const can=(permission:string)=>auth.role==="master"||auth.permissions.includes(permission);
@@ -130,7 +136,7 @@ export default function Intranet() {
     {menuOpen&&<button className="scrim" aria-label="Fechar menu" onClick={()=>setMenuOpen(false)}/>}
 
     <main className="main">
-      <header className="topbar"><button className="menu-btn" onClick={()=>setMenuOpen(true)}>☰</button><div><p>FG Auto Shop <span>/ {title}</span></p></div><div className="user"><div className="avatar">{initials(userName)}</div><div><strong>{userName}</strong><small>Equipe FG Auto</small></div></div></header>
+      <header className="topbar"><button className="menu-btn" onClick={()=>setMenuOpen(true)}>☰</button><div><p>FG Auto Shop <span>/ {title}</span></p></div><GlobalSearch onProduct={goToProduct} onSupplier={goToSupplier} onOrder={goToOrder} onTask={goToTask}/><div className="user"><div className="avatar">{initials(userName)}</div><div><strong>{userName}</strong><small>Equipe FG Auto</small></div></div></header>
       <div className="page">
         {section!=="preco_ecommerce"&&section!=="anuncios"&&section!=="cnpj"&&section!=="relatorios_cmv"&&section!=="produtos"&&section!=="compras"&&section!=="comercial"&&<section className="page-head"><div><p className="eyebrow">CENTRAL DE OPERAÇÕES</p><h1>{section==="painel"?`Olá, ${userName.split(" ")[0]}!`:title}</h1><p>{section==="painel"?"Acompanhe as prioridades e campanhas da equipe em um só lugar.":section==="calendario"?"Catálogo anual para planejar promoções, brindes, kits, frete grátis e sorteios.":section==="materiais"?"Acesse fotos, vídeos e materiais de divulgação disponibilizados pelos fornecedores.":section==="usuarios"?"Crie logins e defina quais módulos cada pessoa pode acessar.":auth.role==="master"?"Atribua tarefas à equipe e acompanhe todas as pendências.":"Acompanhe somente as tarefas direcionadas a você."}</p></div>{section!=="materiais"&&section!=="usuarios"&&<div className="head-actions">{section!=="calendario"&&can("calendario")&&<button className="secondary" onClick={()=>openEvent()}>+ Nova data</button>} {section!=="tarefas"&&auth.role==="master"&&can("tarefas")&&<button className="primary" onClick={()=>openTask()}>+ Nova tarefa</button>}</div>}</section>}
 
@@ -151,8 +157,8 @@ export default function Intranet() {
         :section==="cnpj"?<CnpjLookupView/>
         :section==="relatorios_cmv"?<CmvReportView isMaster={auth.role==="master"}/>
         :section==="comercial"?<ComercialView/>
-        :section==="produtos"?<ProductsView/>
-        :section==="compras"?<PurchasingView/>
+        :section==="produtos"?<ProductsView openProductId={deepLink.productId}/>
+        :section==="compras"?<PurchasingView initialTab={deepLink.orderId?"pedidos":deepLink.supplierId?"fornecedores":undefined} openOrderId={deepLink.orderId} openSupplierId={deepLink.supplierId}/>
         :section==="usuarios"?<UsersView/>
         :<CalendarView events={events} onAdd={()=>openEvent()} onEdit={openEvent} onRemove={removeEvent}/>} 
       </div>
@@ -275,6 +281,59 @@ function UsersView(){
 }
 
 function PriceEcommerceView(){return <section className="price-module"><iframe src="/api/preco-ecommerce" title="Preço E-commerce — Mercado Livre e Shopee"/></section>}
+
+type SearchProduct={id:number;sku:string;name:string;brand:string;stock_physical:number};
+type SearchSupplier={id:number;name:string;contact:string};
+type SearchOrder={id:number;status:string;supplier_name:string};
+type SearchTask={id:number;title:string;priority:string;completed:number};
+type SearchResults={products:SearchProduct[];suppliers:SearchSupplier[];purchaseOrders:SearchOrder[];tasks:SearchTask[]};
+const emptySearch:SearchResults={products:[],suppliers:[],purchaseOrders:[],tasks:[]};
+
+/** Busca global (Ctrl+K) na barra superior — produtos, fornecedores, pedidos de compra e
+ *  tarefas, cada seção só aparece se o resultado da API trouxer algo (a API já filtra por
+ *  permissão do usuário). Clicar num resultado navega direto pro item. */
+function GlobalSearch({onProduct,onSupplier,onOrder,onTask}:{onProduct:(id:number)=>void;onSupplier:(id:number)=>void;onOrder:(id:number)=>void;onTask:()=>void}){
+ const [query,setQuery] = useState("");
+ const [results,setResults] = useState<SearchResults>(emptySearch);
+ const [open,setOpen] = useState(false);
+ const inputRef = useRef<HTMLInputElement>(null);
+ const boxRef = useRef<HTMLDivElement>(null);
+
+ useEffect(()=>{
+  function onKeyDown(e:KeyboardEvent){
+   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="k"){e.preventDefault();inputRef.current?.focus();inputRef.current?.select()}
+   else if(e.key==="Escape"){setOpen(false);inputRef.current?.blur()}
+  }
+  function onClickOutside(e:MouseEvent){if(boxRef.current&&!boxRef.current.contains(e.target as Node))setOpen(false)}
+  window.addEventListener("keydown",onKeyDown);document.addEventListener("mousedown",onClickOutside);
+  return ()=>{window.removeEventListener("keydown",onKeyDown);document.removeEventListener("mousedown",onClickOutside)};
+ },[]);
+
+ useEffect(()=>{
+  if(query.trim().length<2){setResults(emptySearch);return}
+  const t=setTimeout(async()=>{
+   const r=await fetch(`/api/search?q=${encodeURIComponent(query.trim())}`);
+   if(r.ok)setResults(await r.json());
+  },250);
+  return ()=>clearTimeout(t);
+ },[query]);
+
+ const hasResults=results.products.length||results.suppliers.length||results.purchaseOrders.length||results.tasks.length;
+ function pick(action:()=>void){action();setQuery("");setResults(emptySearch);setOpen(false)}
+
+ return <div className="global-search" ref={boxRef}>
+  <span className="global-search-icon">⌕</span>
+  <input ref={inputRef} value={query} placeholder="Buscar em todo o app… Ctrl+K" onFocus={()=>setOpen(true)} onChange={e=>{setQuery(e.target.value);setOpen(true)}}/>
+  <kbd>Ctrl K</kbd>
+  {open&&query.trim().length>=2&&<div className="global-search-results">
+   {!hasResults&&<div className="global-search-empty">Nenhum resultado para "{query}"</div>}
+   {results.products.length>0&&<div className="global-search-group"><small>PRODUTOS</small>{results.products.map(p=><button key={p.id} onClick={()=>pick(()=>onProduct(p.id))}><strong>{p.name}</strong><span>{p.sku||"Sem SKU"} · estoque {p.stock_physical}</span></button>)}</div>}
+   {results.suppliers.length>0&&<div className="global-search-group"><small>FORNECEDORES</small>{results.suppliers.map(s=><button key={s.id} onClick={()=>pick(()=>onSupplier(s.id))}><strong>{s.name}</strong><span>{s.contact||"Sem contato"}</span></button>)}</div>}
+   {results.purchaseOrders.length>0&&<div className="global-search-group"><small>PEDIDOS DE COMPRA</small>{results.purchaseOrders.map(o=><button key={o.id} onClick={()=>pick(()=>onOrder(o.id))}><strong>Pedido #{o.id}</strong><span>{o.supplier_name||"Sem fornecedor"} · {o.status}</span></button>)}</div>}
+   {results.tasks.length>0&&<div className="global-search-group"><small>TAREFAS</small>{results.tasks.map(t=><button key={t.id} onClick={()=>pick(onTask)}><strong>{t.title}</strong><span>{t.completed?"Concluída":"Pendente"} · prioridade {t.priority}</span></button>)}</div>}
+  </div>}
+ </div>;
+}
 
 function PanelTitle({title,action,onClick}:{title:string;action:string;onClick:()=>void}){return <div className="panel-title"><h2>{title}</h2><button onClick={onClick}>{action} →</button></div>}
 function Empty({text}:{text:string}){return <div className="empty"><span>✓</span><p>{text}</p></div>}

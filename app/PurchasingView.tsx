@@ -13,8 +13,11 @@ const money=(v:number)=>new Intl.NumberFormat("pt-BR",{style:"currency",currency
 const statusLabels:Record<string,string>={elaboracao:"Em elaboração",enviado:"Enviado",confirmado:"Confirmado",em_transporte:"Em transporte",recebido_parcial:"Recebido parcialmente",recebido_completo:"Recebido completo",cancelado:"Cancelado"};
 const statusFlow=["elaboracao","enviado","confirmado","em_transporte","recebido_completo"];
 
-export default function PurchasingView(){
- const [tab,setTab]=useState<"radar"|"necessidade"|"fornecedores"|"pedidos">("radar");
+type PurchasingTab="radar"|"necessidade"|"fornecedores"|"pedidos";
+export default function PurchasingView({initialTab,openOrderId,openSupplierId}:{initialTab?:PurchasingTab;openOrderId?:number|null;openSupplierId?:number|null}={}){
+ const [tab,setTab]=useState<PurchasingTab>(initialTab||"radar");
+ // Vindo da busca global (Ctrl+K): pula direto pra aba certa quando o item clicado muda.
+ useEffect(()=>{if(initialTab)setTab(initialTab)},[initialTab,openOrderId,openSupplierId]);
  return <div className="cmv-area purchasing-area">
   <header className="cmv-head"><div><p className="eyebrow">COMPRAS</p><h1>O que preciso comprar</h1><p>Sugestão calculada, fornecedores e pedidos de compra.</p></div></header>
   <div className="purchasing-tabs">
@@ -25,8 +28,8 @@ export default function PurchasingView(){
   </div>
   {tab==="radar"&&<RadarTab onOpenNecessidade={()=>setTab("necessidade")}/>}
   {tab==="necessidade"&&<SuggestionsTab/>}
-  {tab==="fornecedores"&&<SuppliersTab/>}
-  {tab==="pedidos"&&<OrdersTab/>}
+  {tab==="fornecedores"&&<SuppliersTab openSupplierId={openSupplierId}/>}
+  {tab==="pedidos"&&<OrdersTab openOrderId={openOrderId}/>}
  </div>;
 }
 
@@ -82,12 +85,14 @@ function SuggestionsTab(){
  </div>;
 }
 
-function SuppliersTab(){
+function SuppliersTab({openSupplierId}:{openSupplierId?:number|null}={}){
  const empty={name:"",contact:"",phone:"",whatsapp:"",email:"",brands:"",leadTimeDays:0,paymentTerms:"",minOrderValue:0,freight:"",notes:""};
  const [suppliers,setSuppliers]=useState<Supplier[]>([]),[form,setForm]=useState<typeof empty>(empty),[editing,setEditing]=useState<number|null>(null),[error,setError]=useState(""),[busy,setBusy]=useState(false);
  async function load(){const r=await fetch("/api/suppliers");if(r.ok)setSuppliers(await r.json())}
  useEffect(()=>{load()},[]); // eslint-disable-line react-hooks/exhaustive-deps
  function edit(s:Supplier){setEditing(s.id);setForm({name:s.name,contact:s.contact,phone:s.phone,whatsapp:s.whatsapp,email:s.email,brands:s.brands,leadTimeDays:s.lead_time_days,paymentTerms:s.payment_terms,minOrderValue:s.min_order_value,freight:s.freight,notes:s.notes})}
+ // Vindo da busca global (Ctrl+K): abre o fornecedor clicado assim que a lista carregar.
+ useEffect(()=>{if(openSupplierId){const s=suppliers.find(x=>x.id===openSupplierId);if(s)edit(s)}},[openSupplierId,suppliers]); // eslint-disable-line react-hooks/exhaustive-deps
  function reset(){setEditing(null);setForm(empty);setError("")}
  async function save(e:FormEvent){e.preventDefault();setBusy(true);setError("");const r=await fetch(editing?`/api/suppliers/${editing}`:"/api/suppliers",{method:editing?"PATCH":"POST",headers:{"content-type":"application/json"},body:JSON.stringify(form)});const d=await r.json();setBusy(false);if(!r.ok){setError(d.error||"Não foi possível salvar.");return}reset();await load()}
  async function remove(s:Supplier){if(!confirm(`Excluir ${s.name}?`))return;const r=await fetch(`/api/suppliers/${s.id}`,{method:"DELETE"});const d=await r.json();if(!r.ok){alert(d.error);return}if(editing===s.id)reset();await load()}
@@ -115,11 +120,12 @@ function SuppliersTab(){
  </div>;
 }
 
-function OrdersTab(){
+function OrdersTab({openOrderId}:{openOrderId?:number|null}={}){
  const [orders,setOrders]=useState<Order[]>([]),[detailId,setDetailId]=useState<number|null>(null),[detail,setDetail]=useState<{order:Order;items:OrderItem[]}|null>(null);
  async function load(){const r=await fetch("/api/purchase-orders");if(r.ok)setOrders(await r.json())}
  useEffect(()=>{load()},[]); // eslint-disable-line react-hooks/exhaustive-deps
  async function openDetail(id:number){setDetailId(id);setDetail(null);const r=await fetch(`/api/purchase-orders/${id}`);if(r.ok)setDetail(await r.json())}
+ useEffect(()=>{if(openOrderId)openDetail(openOrderId)},[openOrderId]); // eslint-disable-line react-hooks/exhaustive-deps
  async function advance(order:Order){
   const idx=statusFlow.indexOf(order.status);if(idx<0||idx>=statusFlow.length-1)return;
   await fetch(`/api/purchase-orders/${order.id}`,{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify({status:statusFlow[idx+1]})});

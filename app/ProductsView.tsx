@@ -11,7 +11,7 @@ const money=(v:number)=>new Intl.NumberFormat("pt-BR",{style:"currency",currency
 const alertLabels:Record<Alert,string>={zerado:"Estoque zerado",abaixo_minimo:"Abaixo do mínimo",excesso:"Excesso de estoque",parado_30:"30 dias sem venda",parado_60:"60 dias sem venda",parado_90:"90 dias sem venda"};
 const alertClass:Record<Alert,string>={zerado:"alert-critical",abaixo_minimo:"alert-warning",excesso:"alert-info",parado_30:"alert-muted",parado_60:"alert-muted",parado_90:"alert-critical"};
 
-export default function ProductsView(){
+export default function ProductsView({openProductId}:{openProductId?:number|null}={}){
  const [data,setData]=useState<ListResponse|null>(null),[loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[notice,setNotice]=useState(""),[error,setError]=useState("");
  const [q,setQ]=useState(""),[brand,setBrand]=useState(""),[category,setCategory]=useState(""),[alert,setAlertFilter]=useState("");
  const [detailId,setDetailId]=useState<number|null>(null),[detail,setDetail]=useState<Detail|null>(null);
@@ -24,6 +24,8 @@ export default function ProductsView(){
  }
  useEffect(()=>{load()},[]); // eslint-disable-line react-hooks/exhaustive-deps
  useEffect(()=>{const t=setTimeout(load,300);return()=>clearTimeout(t)},[q,brand,category,alert]); // eslint-disable-line react-hooks/exhaustive-deps
+ // Vindo da busca global (Ctrl+K): abre direto o produto clicado.
+ useEffect(()=>{if(openProductId)openDetail(openProductId)},[openProductId]); // eslint-disable-line react-hooks/exhaustive-deps
 
  async function sync(){
   setBusy(true);setError("");setNotice("Consultando catálogo e estoque no Bling…");
