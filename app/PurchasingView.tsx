@@ -4,6 +4,8 @@ import {FormEvent,useEffect,useState} from "react";
 type Supplier={id:number;name:string;contact:string;phone:string;whatsapp:string;email:string;brands:string;lead_time_days:number;payment_terms:string;min_order_value:number;freight:string;notes:string;orderCount:number;productCount:number};
 type Suggestion={id:number;sku:string;name:string;cost:number;stock_physical:number;min_stock:number;supplier_id:number|null;supplier_name:string|null;avgDailySales:number;suggestedQuantity:number;estimatedCost:number};
 type SuggestionGroup={supplierId:number|null;supplierName:string;items:Suggestion[];totalCost:number};
+type RadarSummary={valorARepor:number;itensAbaixoDaRegua:number;zeradosQueVendem:number};
+type ZeradoItem={id:number;sku:string;name:string;qty30:number;cost:number;supplierName:string|null};
 type Order={id:number;supplier_id:number;supplier_name:string;status:string;itemCount:number;totalCost:number;created_at:string;notes:string};
 type OrderItem={id:number;product_id:number;product_name:string;sku:string;quantity:number;unit_cost:number;received_quantity:number};
 
@@ -12,17 +14,47 @@ const statusLabels:Record<string,string>={elaboracao:"Em elaboração",enviado:"
 const statusFlow=["elaboracao","enviado","confirmado","em_transporte","recebido_completo"];
 
 export default function PurchasingView(){
- const [tab,setTab]=useState<"necessidade"|"fornecedores"|"pedidos">("necessidade");
+ const [tab,setTab]=useState<"radar"|"necessidade"|"fornecedores"|"pedidos">("radar");
  return <div className="cmv-area purchasing-area">
   <header className="cmv-head"><div><p className="eyebrow">COMPRAS</p><h1>O que preciso comprar</h1><p>Sugestão calculada, fornecedores e pedidos de compra.</p></div></header>
   <div className="purchasing-tabs">
+   <button className={tab==="radar"?"tab active":"tab"} onClick={()=>setTab("radar")}>Radar de reposição</button>
    <button className={tab==="necessidade"?"tab active":"tab"} onClick={()=>setTab("necessidade")}>Necessidade de compra</button>
    <button className={tab==="fornecedores"?"tab active":"tab"} onClick={()=>setTab("fornecedores")}>Fornecedores</button>
    <button className={tab==="pedidos"?"tab active":"tab"} onClick={()=>setTab("pedidos")}>Pedidos de compra</button>
   </div>
+  {tab==="radar"&&<RadarTab onOpenNecessidade={()=>setTab("necessidade")}/>}
   {tab==="necessidade"&&<SuggestionsTab/>}
   {tab==="fornecedores"&&<SuppliersTab/>}
   {tab==="pedidos"&&<OrdersTab/>}
+ </div>;
+}
+
+/** Painel de decisão rápida — antes da lista detalhada por fornecedor (aba Necessidade
+ *  de compra), mostra o tamanho do problema em 3 números e os itens mais urgentes:
+ *  zerados com venda recente, que não podem esperar o ciclo normal de reposição. */
+function RadarTab({onOpenNecessidade}:{onOpenNecessidade:()=>void}){
+ const [summary,setSummary]=useState<RadarSummary>({valorARepor:0,itensAbaixoDaRegua:0,zeradosQueVendem:0});
+ const [zerados,setZerados]=useState<ZeradoItem[]>([]);
+ const [loading,setLoading]=useState(true);
+ useEffect(()=>{
+  fetch("/api/purchasing/suggestions").then(r=>r.ok?r.json():null).then(d=>{if(d){setSummary(d.summary);setZerados(d.zerados)}}).finally(()=>setLoading(false));
+ },[]);
+ if(loading)return <div className="loading">Calculando…</div>;
+ return <div className="radar-area">
+  <section className="cmv-kpis">
+   <article className="panel"><span>VALOR A REPOR</span><strong>{money(summary.valorARepor)}</strong><small>soma das sugestões × custo</small></article>
+   <article className="panel alert-warning-card"><span>ITENS ABAIXO DA RÉGUA</span><strong>{summary.itensAbaixoDaRegua}</strong><small>produtos na hora de comprar</small></article>
+   <article className="panel alert-critical-card"><span>ZERADOS QUE VENDEM</span><strong>{summary.zeradosQueVendem}</strong><small>estoque zero, giro sem saldo — prioridade</small></article>
+  </section>
+  <section className="panel large">
+   <div className="table-head"><div><strong>Zerados que vendem</strong><span> · estoque zero com venda nos últimos 30 dias, ordenado pelo mais urgente</span></div><button className="secondary" onClick={onOpenNecessidade}>Ver necessidade completa →</button></div>
+   {zerados.length?<div className="cmv-columns radar-columns">
+    <span>Produto / SKU</span><span>Vendas 30d</span><span>Custo</span><span>Fornecedor</span>
+   </div>:null}
+   {zerados.length?<div>{zerados.map(z=><div className="cmv-columns radar-columns" key={z.id}><span><strong>{z.name}</strong><small>{z.sku||"Sem SKU"}</small></span><span>{z.qty30}</span><span>{money(z.cost)}</span><span>{z.supplierName||"Sem fornecedor"}</span></div>)}</div>
+   :<div className="cmv-empty"><span>✓</span><strong>Nenhum produto zerado com venda recente</strong><p>Tudo o que vende tem estoque no momento.</p></div>}
+  </section>
  </div>;
 }
 

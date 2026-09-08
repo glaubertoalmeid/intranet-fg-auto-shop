@@ -69,6 +69,7 @@
 .status-badge{font-style:normal;font-size:8px;font-weight:800;border-radius:10px;padding:4px 8px;white-space:nowrap}.status-elaboracao{background:#f0f3f7;color:#66758a}.status-enviado{background:#edf6ff;color:#1265b3}.status-confirmado{background:#e8f0fe;color:#3355cc}.status-em_transporte{background:#fff4d9;color:#986900}.status-recebido_parcial{background:#fff0e0;color:#b3600c}.status-recebido_completo{background:#e8f8f0;color:#16834e}.status-cancelado{background:#fdecec;color:#c0392b}
 .receiving-form{border-top:1px solid var(--border);padding-top:14px}.receiving-columns{grid-template-columns:2fr 1fr 1fr;padding:9px 0}.receiving-columns input{width:80px;height:32px;border:1px solid var(--border);border-radius:6px;padding:0 8px}.receiving-form button{margin-top:12px}
 @media(max-width:900px){.suggestion-columns,.orders-columns{min-width:640px}}
+.radar-columns{grid-template-columns:2.2fr .8fr .8fr 1.1fr;min-width:600px}
 /* Comercial */
 .comercial-filters{grid-template-columns:1fr 1fr auto}
 .comercial-kpis{grid-template-columns:repeat(5,1fr)}

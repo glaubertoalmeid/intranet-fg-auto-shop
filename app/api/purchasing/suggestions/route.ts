@@ -40,6 +40,18 @@ export async function GET(){
    const group=bySupplier.get(key)!;group.items.push(s);group.totalCost+=s.estimatedCost;
   }
 
-  return NextResponse.json({suggestions,groups:[...bySupplier.values()]});
+  // Radar de reposição: painel de KPIs pra decisão rápida, além da lista detalhada por
+  // fornecedor acima. "Zerado que vende" é mais urgente que a régua padrão — estoque
+  // zero com venda recente, tenha ou não mínimo configurado.
+  const zerados=rows.filter(r=>r.stock_physical<=0&&r.qty30>0)
+   .map(r=>({id:r.id,sku:r.sku,name:r.name,qty30:r.qty30,cost:r.cost,supplierName:r.supplier_id?supplierById.get(r.supplier_id)?.name||null:null}))
+   .sort((a,b)=>b.qty30-a.qty30);
+  const summary={
+   valorARepor:suggestions.reduce((sum,s)=>sum+s.estimatedCost,0),
+   itensAbaixoDaRegua:suggestions.length,
+   zeradosQueVendem:zerados.length,
+  };
+
+  return NextResponse.json({suggestions,groups:[...bySupplier.values()],summary,zerados});
  }catch(error){return NextResponse.json({error:error instanceof Error?error.message:"Não foi possível calcular a necessidade de compra."},{status:500})}
 }
