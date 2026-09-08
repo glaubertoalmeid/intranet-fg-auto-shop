@@ -71,7 +71,6 @@
 @media(max-width:900px){.suggestion-columns,.orders-columns{min-width:640px}}
 .radar-columns{grid-template-columns:2.2fr .8fr .8fr 1.1fr;min-width:600px}
 .radar-list-head{border-bottom:0!important;padding:0!important;margin:4px 0 2px}
-.radar-supplier-group{margin-bottom:14px}
 /* Comercial */
 .comercial-filters{grid-template-columns:1fr 1fr auto}
 .comercial-kpis{grid-template-columns:repeat(5,1fr)}
