@@ -6,14 +6,17 @@ const record=(v:unknown):AnyRecord=>v&&typeof v==="object"&&!Array.isArray(v)?v 
 const list=(v:unknown)=>Array.isArray(v)?v:[];
 const num=(v:unknown)=>Number(v)||0;
 const text=(v:unknown)=>String(v??"").trim();
+// marca/categoria do Bling às vezes vêm como string direto, às vezes como {descricao}.
+// Nunca cair pro objeto cru — text(objeto) vira o literal "[object Object]" no banco.
+const label=(v:unknown)=>typeof v==="string"?v.trim():text(record(v).descricao);
 
 const mapProduct=(p:AnyRecord)=>({
  bling_product_id:text(p.id),
  sku:text(p.codigo),
  gtin:text(p.gtin||p.gtinEmbalagem),
  name:text(p.nome),
- brand:text(record(p.marca).descricao||p.marca),
- category:text(record(p.categoria).descricao||p.categoria),
+ brand:label(p.marca),
+ category:label(p.categoria),
  supplier:text(record(p.fornecedor).nome),
  cost:num(p.precoCusto||record(p.fornecedor).precoCusto),
  sale_price:num(p.preco),

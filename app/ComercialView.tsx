@@ -48,12 +48,15 @@ export default function ComercialView(){
     <button className={tab==="clientes"?"tab active":"tab"} onClick={()=>setTab("clientes")}>Clientes</button>
    </div>
 
-   {tab==="canais"&&<div className="comercial-groups">
-    <GroupTable title="Por canal" rows={data?.byChannel||[]}/>
-    <GroupTable title="Por vendedor" rows={data?.bySeller||[]}/>
-    <GroupTable title="Por marca" rows={data?.byBrand||[]}/>
-    <GroupTable title="Por categoria" rows={data?.byCategory||[]}/>
-   </div>}
+   {tab==="canais"&&<>
+    <ChannelShareChart rows={data?.byChannel||[]} totalRevenue={totals.revenue}/>
+    <div className="comercial-groups">
+     <GroupTable title="Por canal" rows={data?.byChannel||[]}/>
+     <GroupTable title="Por vendedor" rows={data?.bySeller||[]}/>
+     <GroupTable title="Por marca" rows={data?.byBrand||[]}/>
+     <GroupTable title="Por categoria" rows={data?.byCategory||[]}/>
+    </div>
+   </>}
 
    {tab==="produtos"&&<div className="comercial-groups">
     <ProductTable title="Produtos mais vendidos" rows={data?.topProducts||[]}/>
@@ -66,6 +69,36 @@ export default function ComercialView(){
    </section>}
   </>}
  </div>;
+}
+
+// Paleta categórica validada (ordem fixa — nunca reciclada por posição/rank) e cor
+// atribuída pela identidade do canal (hash do nome), não pelo lugar no ranking, pra que
+// o mesmo canal sempre apareça com a mesma cor mesmo quando o período muda a ordem.
+const CHANNEL_PALETTE=["#2a78d6","#eb6834","#1baf7a","#eda100","#e87ba4","#008300","#4a3aa7","#e34948"];
+function colorForChannel(label:string){
+ let hash=0;for(let i=0;i<label.length;i++)hash=(hash*31+label.charCodeAt(i))|0;
+ return CHANNEL_PALETTE[Math.abs(hash)%CHANNEL_PALETTE.length];
+}
+
+function ChannelShareChart({rows,totalRevenue}:{rows:Group[];totalRevenue:number}){
+ if(!rows.length)return null;
+ const max=Math.max(...rows.map(r=>r.revenue),1);
+ return <section className="panel comercial-chart">
+  <div className="table-head"><strong>Faturamento por canal</strong><span> · % do total do período</span></div>
+  <div className="channel-chart">
+   {rows.map(r=>{
+    const share=totalRevenue?(r.revenue/totalRevenue)*100:0;
+    const widthPct=(r.revenue/max)*100;
+    return <div className="channel-bar-row" key={r.label}>
+     <span className="channel-bar-label">{r.label}</span>
+     <div className="channel-bar-track">
+      <div className="channel-bar-fill" style={{width:`${widthPct}%`,background:colorForChannel(r.label)}}/>
+     </div>
+     <span className="channel-bar-value">{money(r.revenue)} · {pct(share)}</span>
+    </div>;
+   })}
+  </div>
+ </section>;
 }
 
 function GroupTable({title,rows}:{title:string;rows:Group[]}){

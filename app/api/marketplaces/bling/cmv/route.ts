@@ -10,6 +10,9 @@ const list=(v:unknown)=>Array.isArray(v)?v:[];
 const num=(v:unknown)=>Number(v)||0;
 const text=(v:unknown)=>String(v??"").trim();
 const isDate=(v:string)=>/^\d{4}-\d{2}-\d{2}$/.test(v);
+// marca/categoria do Bling às vezes vêm como string direto, às vezes como {descricao}.
+// Nunca cair pro objeto cru — text(objeto) vira o literal "[object Object]" no banco.
+const label=(v:unknown)=>typeof v==="string"?v.trim():text(record(v).descricao);
 
 type CmvSaleRow={sale_id:string;item_id:string;product_id:string;sku:string;product_name:string;quantity:number;revenue:number;cost:number;cost_estimated:boolean;sale_date:string;channel:string;seller:string;brand:string;category:string;customer_name:string};
 type CostInfo={cost:number;brand:string;category:string};
@@ -35,8 +38,8 @@ async function costLookup(productId:string,cache:Map<string,CostInfo>,budget:Bud
   try{
    const p=record((await blingApi(`/produtos/${productId}`)).data);
    info.cost=num(p.precoCusto||p.custo||record(p.fornecedor).precoCusto);
-   info.brand=text(record(p.marca).descricao||p.marca);
-   info.category=text(record(p.categoria).descricao||p.categoria);
+   info.brand=label(p.marca);
+   info.category=label(p.categoria);
   }catch{/* mantém custo zerado e sinaliza estimativa */}
  }
  cache.set(productId,info);
