@@ -6,6 +6,7 @@ type Product={id:number;bling_product_id:string;sku:string;name:string;brand:str
 type Summary={total:number;zerado:number;abaixoMinimo:number;parado90:number;estoqueValorCusto:number};
 type ListResponse={products:Product[];filters:{brands:string[];categories:string[]};summary:Summary};
 type Detail={product:Record<string,unknown>;sales:{qty30:number;qty60:number;qty90:number;revenue30:number};listings:{id:number;platform:string;status:string;sale_price:number;ml_permalink:string;ml_publish_status:string;shopee_item_id:string;shopee_publish_status:string}[];alerts:Alert[];daysOfCoverage:number|null;needsPurchase:boolean};
+type SupplierOption={id:number;name:string};
 
 const money=(v:number)=>new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL"}).format(v||0);
 const alertLabels:Record<Alert,string>={zerado:"Estoque zerado",abaixo_minimo:"Abaixo do mínimo",excesso:"Excesso de estoque",parado_30:"30 dias sem venda",parado_60:"60 dias sem venda",parado_90:"90 dias sem venda"};
@@ -15,6 +16,8 @@ export default function ProductsView({openProductId}:{openProductId?:number|null
  const [data,setData]=useState<ListResponse|null>(null),[loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[notice,setNotice]=useState(""),[error,setError]=useState("");
  const [q,setQ]=useState(""),[brand,setBrand]=useState(""),[category,setCategory]=useState(""),[alert,setAlertFilter]=useState("");
  const [detailId,setDetailId]=useState<number|null>(null),[detail,setDetail]=useState<Detail|null>(null);
+ const [suppliers,setSuppliers]=useState<SupplierOption[]>([]);
+ useEffect(()=>{fetch("/api/suppliers").then(r=>r.ok?r.json():[]).then(setSuppliers)},[]);
 
  async function load(){
   setLoading(true);
@@ -38,7 +41,8 @@ export default function ProductsView({openProductId}:{openProductId?:number|null
  async function saveDetail(e:FormEvent<HTMLFormElement>){
   e.preventDefault();if(!detailId)return;
   const f=new FormData(e.currentTarget);
-  const r=await fetch(`/api/products/${detailId}`,{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify({minStock:Number(f.get("minStock")),maxStock:Number(f.get("maxStock")),location:f.get("location"),subcategory:f.get("subcategory")})});
+  const supplierId=f.get("supplierId");
+  const r=await fetch(`/api/products/${detailId}`,{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify({minStock:Number(f.get("minStock")),maxStock:Number(f.get("maxStock")),location:f.get("location"),subcategory:f.get("subcategory"),supplierId:supplierId?Number(supplierId):null})});
   if(r.ok){await openDetail(detailId);await load()}
  }
 
@@ -99,6 +103,7 @@ export default function ProductsView({openProductId}:{openProductId?:number|null
      <label>Estoque máximo<input name="maxStock" type="number" step="1" defaultValue={String(detail.product.max_stock)}/></label>
      <label>Localização física<input name="location" defaultValue={String(detail.product.location||"")}/></label>
      <label>Subcategoria<input name="subcategory" defaultValue={String(detail.product.subcategory||"")}/></label>
+     <label>Fornecedor<select name="supplierId" defaultValue={detail.product.supplier_id?String(detail.product.supplier_id):""}><option value="">Sem fornecedor vinculado</option>{suppliers.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
      <button className="primary">Salvar</button>
     </form>
    </>}

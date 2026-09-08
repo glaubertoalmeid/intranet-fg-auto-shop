@@ -1,11 +1,10 @@
 "use client";
-import {FormEvent,useEffect,useState} from "react";
+import {FormEvent,useEffect,useMemo,useState} from "react";
 
 type Supplier={id:number;name:string;contact:string;phone:string;whatsapp:string;email:string;brands:string;lead_time_days:number;payment_terms:string;min_order_value:number;freight:string;notes:string;orderCount:number;productCount:number};
-type Suggestion={id:number;sku:string;name:string;cost:number;stock_physical:number;min_stock:number;supplier_id:number|null;supplier_name:string|null;avgDailySales:number;suggestedQuantity:number;estimatedCost:number};
+type Suggestion={id:number;sku:string;name:string;brand:string;category:string;cost:number;stock_physical:number;min_stock:number;supplier_id:number|null;supplier_name:string|null;avgDailySales:number;suggestedQuantity:number;estimatedCost:number};
 type SuggestionGroup={supplierId:number|null;supplierName:string;items:Suggestion[];totalCost:number};
-type RadarSummary={valorARepor:number;itensAbaixoDaRegua:number;zeradosQueVendem:number};
-type ZeradoItem={id:number;sku:string;name:string;qty30:number;cost:number;supplierName:string|null};
+type ZeradoItem={id:number;sku:string;name:string;brand:string;category:string;qty30:number;cost:number;supplierId:number|null;supplierName:string|null};
 type Order={id:number;supplier_id:number;supplier_name:string;status:string;itemCount:number;totalCost:number;created_at:string;notes:string};
 type OrderItem={id:number;product_id:number;product_name:string;sku:string;quantity:number;unit_cost:number;received_quantity:number};
 
@@ -33,31 +32,83 @@ export default function PurchasingView({initialTab,openOrderId,openSupplierId}:{
  </div>;
 }
 
+const SEM_FORNECEDOR="sem_fornecedor",SEM_CATEGORIA="sem_categoria";
+
 /** Painel de decisão rápida — antes da lista detalhada por fornecedor (aba Necessidade
  *  de compra), mostra o tamanho do problema em 3 números e os itens mais urgentes:
- *  zerados com venda recente, que não podem esperar o ciclo normal de reposição. */
+ *  zerados com venda recente, que não podem esperar o ciclo normal de reposição. Filtros
+ *  por fornecedor/categoria porque, na prática, a compra é feita fornecedor por
+ *  fornecedor (ex.: fechar o pedido da Vonixx separado do da Nitro). */
 function RadarTab({onOpenNecessidade}:{onOpenNecessidade:()=>void}){
- const [summary,setSummary]=useState<RadarSummary>({valorARepor:0,itensAbaixoDaRegua:0,zeradosQueVendem:0});
- const [zerados,setZerados]=useState<ZeradoItem[]>([]);
- const [loading,setLoading]=useState(true);
+ const [suggestions,setSuggestions] = useState<Suggestion[]>([]);
+ const [zerados,setZerados] = useState<ZeradoItem[]>([]);
+ const [loading,setLoading] = useState(true);
+ const [supplierFilter,setSupplierFilter] = useState("");
+ const [categoryFilter,setCategoryFilter] = useState("");
  useEffect(()=>{
-  fetch("/api/purchasing/suggestions").then(r=>r.ok?r.json():null).then(d=>{if(d){setSummary(d.summary);setZerados(d.zerados)}}).finally(()=>setLoading(false));
+  fetch("/api/purchasing/suggestions").then(r=>r.ok?r.json():null).then(d=>{if(d){setSuggestions(d.suggestions);setZerados(d.zerados)}}).finally(()=>setLoading(false));
  },[]);
+
+ // Normaliza os dois formatos (Suggestion usa supplier_id, ZeradoItem usa supplierId) pra
+ // um único shape antes de filtrar/agrupar — evita repetir a mesma lógica duas vezes.
+ const norm=(supplierId:number|null,supplierName:string|null,category:string)=>({supplierKey:supplierId!=null?String(supplierId):SEM_FORNECEDOR,supplierName:supplierName||"Sem fornecedor vinculado",categoryKey:category?category:SEM_CATEGORIA});
+
+ const supplierOptions=useMemo(()=>{
+  const map=new Map<string,string>();
+  for(const s of suggestions){const n=norm(s.supplier_id,s.supplier_name,s.category);map.set(n.supplierKey,n.supplierName)}
+  for(const z of zerados){const n=norm(z.supplierId,z.supplierName,z.category);map.set(n.supplierKey,n.supplierName)}
+  return [...map.entries()];
+ },[suggestions,zerados]);
+ const categoryOptions=useMemo(()=>{
+  const set=new Set<string>();
+  for(const s of suggestions)set.add(norm(s.supplier_id,s.supplier_name,s.category).categoryKey);
+  for(const z of zerados)set.add(norm(z.supplierId,z.supplierName,z.category).categoryKey);
+  return [...set];
+ },[suggestions,zerados]);
+
+ const filteredSuggestions=useMemo(()=>suggestions.filter(s=>{
+  const n=norm(s.supplier_id,s.supplier_name,s.category);
+  return(!supplierFilter||n.supplierKey===supplierFilter)&&(!categoryFilter||n.categoryKey===categoryFilter);
+ }),[suggestions,supplierFilter,categoryFilter]);
+ const filteredZerados=useMemo(()=>zerados.filter(z=>{
+  const n=norm(z.supplierId,z.supplierName,z.category);
+  return(!supplierFilter||n.supplierKey===supplierFilter)&&(!categoryFilter||n.categoryKey===categoryFilter);
+ }),[zerados,supplierFilter,categoryFilter]);
+
+ const summary={
+  valorARepor:filteredSuggestions.reduce((sum,s)=>sum+s.estimatedCost,0),
+  itensAbaixoDaRegua:filteredSuggestions.length,
+  zeradosQueVendem:filteredZerados.length,
+ };
+
+ const zeradosBySupplier=useMemo(()=>{
+  const map=new Map<string,{supplierName:string;items:ZeradoItem[]}>();
+  for(const z of filteredZerados){
+   const key=norm(z.supplierId,z.supplierName,z.category).supplierKey;
+   if(!map.has(key))map.set(key,{supplierName:z.supplierName||"Sem fornecedor vinculado",items:[]});
+   map.get(key)!.items.push(z);
+  }
+  return [...map.values()].sort((a,b)=>b.items.length-a.items.length);
+ },[filteredZerados]);
+
  if(loading)return <div className="loading">Calculando…</div>;
  return <div className="radar-area">
+  <section className="cmv-filters panel">
+   <label>Fornecedor<select value={supplierFilter} onChange={e=>setSupplierFilter(e.target.value)}><option value="">Todos os fornecedores</option>{supplierOptions.map(([id,name])=><option key={id} value={id}>{name}</option>)}</select></label>
+   <label>Categoria<select value={categoryFilter} onChange={e=>setCategoryFilter(e.target.value)}><option value="">Todas as categorias</option>{categoryOptions.map(c=><option key={c} value={c}>{c===SEM_CATEGORIA?"Sem categoria":c}</option>)}</select></label>
+  </section>
   <section className="cmv-kpis">
    <article className="panel"><span>VALOR A REPOR</span><strong>{money(summary.valorARepor)}</strong><small>soma das sugestões × custo</small></article>
-   <article className="panel alert-warning-card"><span>ITENS ABAIXO DA RÉGUA</span><strong>{summary.itensAbaixoDaRegua}</strong><small>produtos na hora de comprar</small></article>
+   <article className="panel alert-warning-card"><span>ITENS ABAIXO DA RÉGUA</span><strong>{summary.itensAbaixoDaRegua}</strong><small>estoque abaixo do mínimo + venda média × prazo do fornecedor</small></article>
    <article className="panel alert-critical-card"><span>ZERADOS QUE VENDEM</span><strong>{summary.zeradosQueVendem}</strong><small>estoque zero, giro sem saldo — prioridade</small></article>
   </section>
-  <section className="panel large">
-   <div className="table-head"><div><strong>Zerados que vendem</strong><span> · estoque zero com venda nos últimos 30 dias, ordenado pelo mais urgente</span></div><button className="secondary" onClick={onOpenNecessidade}>Ver necessidade completa →</button></div>
-   {zerados.length?<div className="cmv-columns radar-columns">
-    <span>Produto / SKU</span><span>Vendas 30d</span><span>Custo</span><span>Fornecedor</span>
-   </div>:null}
-   {zerados.length?<div>{zerados.map(z=><div className="cmv-columns radar-columns" key={z.id}><span><strong>{z.name}</strong><small>{z.sku||"Sem SKU"}</small></span><span>{z.qty30}</span><span>{money(z.cost)}</span><span>{z.supplierName||"Sem fornecedor"}</span></div>)}</div>
-   :<div className="cmv-empty"><span>✓</span><strong>Nenhum produto zerado com venda recente</strong><p>Tudo o que vende tem estoque no momento.</p></div>}
-  </section>
+  <div className="table-head radar-list-head"><div><strong>Zerados que vendem</strong><span> · agrupado por fornecedor, ordenado pelo mais urgente dentro de cada grupo</span></div><button className="secondary" onClick={onOpenNecessidade}>Ver necessidade completa →</button></div>
+  {zeradosBySupplier.length?zeradosBySupplier.map(group=><section className="panel radar-supplier-group" key={group.supplierName}>
+   <div className="table-head"><div><strong>{group.supplierName}</strong><span> · {group.items.length} produto(s)</span></div></div>
+   <div className="cmv-columns radar-columns"><span>Produto / SKU</span><span>Vendas 30d</span><span>Custo</span><span>Categoria</span></div>
+   {group.items.map(z=><div className="cmv-columns radar-columns" key={z.id}><span><strong>{z.name}</strong><small>{z.sku||"Sem SKU"}</small></span><span>{z.qty30}</span><span>{money(z.cost)}</span><span>{z.category||"—"}</span></div>)}
+  </section>)
+  :<div className="cmv-empty"><span>✓</span><strong>Nenhum produto zerado com venda recente</strong><p>Tudo o que vende tem estoque no momento (com esses filtros).</p></div>}
  </div>;
 }
 

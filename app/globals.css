@@ -70,6 +70,8 @@
 .receiving-form{border-top:1px solid var(--border);padding-top:14px}.receiving-columns{grid-template-columns:2fr 1fr 1fr;padding:9px 0}.receiving-columns input{width:80px;height:32px;border:1px solid var(--border);border-radius:6px;padding:0 8px}.receiving-form button{margin-top:12px}
 @media(max-width:900px){.suggestion-columns,.orders-columns{min-width:640px}}
 .radar-columns{grid-template-columns:2.2fr .8fr .8fr 1.1fr;min-width:600px}
+.radar-list-head{border-bottom:0!important;padding:0!important;margin:4px 0 2px}
+.radar-supplier-group{margin-bottom:14px}
 /* Comercial */
 .comercial-filters{grid-template-columns:1fr 1fr auto}
 .comercial-kpis{grid-template-columns:repeat(5,1fr)}
