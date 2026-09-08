@@ -5,21 +5,25 @@ import {fetchAllRows,getSupabase} from "../../../../lib/supabase";
 
 type ProductRow={id:number;bling_product_id:string;sku:string;name:string;brand:string;category:string;cost:number;stock_physical:number;min_stock:number;supplier_id:number|null;status:string};
 type Row=ProductRow&{lead_time_days:number|null;qty30:number};
+const isDate=(v:string)=>/^\d{4}-\d{2}-\d{2}$/.test(v);
 
-// Janela usada pra calcular a venda média/dia — o padrão (30 dias) nem sempre reflete a
-// dinâmica real de giro; a tela deixa escolher (7 a 180 dias).
-const DEFAULT_DAYS=30,MIN_DAYS=7,MAX_DAYS=180;
-
+// Período usado pra calcular a venda média/dia. Aceita datas explícitas (from/to, igual
+// à tela de CMV) pra medir uma janela precisa; sem elas, cai num padrão de 30 dias.
 export async function GET(request:Request){
  try{
   await requirePermission("compras");
-  const daysParam=Number(new URL(request.url).searchParams.get("days"));
-  const days=Number.isFinite(daysParam)?Math.min(MAX_DAYS,Math.max(MIN_DAYS,daysParam)):DEFAULT_DAYS;
+  const url=new URL(request.url);
+  const fromParam=url.searchParams.get("from")||"",toParam=url.searchParams.get("to")||"";
+  const now=new Date();
+  const to=isDate(toParam)?toParam:now.toISOString().slice(0,10);
+  const from=isDate(fromParam)?fromParam:new Date(now.getTime()-29*86400000).toISOString().slice(0,10);
+  const days=Math.max(1,Math.round((new Date(`${to}T00:00:00Z`).getTime()-new Date(`${from}T00:00:00Z`).getTime())/86400000)+1);
+
   const supabase=getSupabase();
   const [products,{data:suppliers,error:suppliersError},cmvRows]=await Promise.all([
    fetchAllRows<ProductRow>((from_,to_)=>supabase.from("products").select("id,bling_product_id,sku,name,brand,category,cost,stock_physical,min_stock,supplier_id,status").eq("status","ativo").range(from_,to_)),
    supabase.from("suppliers").select("id,lead_time_days"),
-   fetchAllRows<{product_id:string;quantity:number}>((from_,to_)=>supabase.from("cmv_sales").select("product_id,quantity").gte("sale_date",new Date(Date.now()-days*86400000).toISOString().slice(0,10)).range(from_,to_)),
+   fetchAllRows<{product_id:string;quantity:number}>((from_,to_)=>supabase.from("cmv_sales").select("product_id,quantity").gte("sale_date",from).lte("sale_date",to).range(from_,to_)),
   ]);
   if(suppliersError)throw new Error(suppliersError.message);
 
@@ -48,6 +52,6 @@ export async function GET(request:Request){
    zeradosQueVendem:zerados.length,
   };
 
-  return NextResponse.json({suggestions,summary,zerados,days});
+  return NextResponse.json({suggestions,summary,zerados,from,to,days});
  }catch(error){return NextResponse.json({error:error instanceof Error?error.message:"Não foi possível calcular a necessidade de compra."},{status:500})}
 }

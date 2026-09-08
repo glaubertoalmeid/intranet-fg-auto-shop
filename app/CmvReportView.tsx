@@ -23,7 +23,28 @@ export default function CmvReportView({isMaster}:{isMaster:boolean}){
 
  async function save(e:FormEvent<HTMLFormElement>){e.preventDefault();setBusy(true);setError("");const f=new FormData(e.currentTarget),r=await fetch("/api/marketplaces/bling/settings",{method:"PUT",headers:{"content-type":"application/json"},body:JSON.stringify({clientId:f.get("clientId"),clientSecret:f.get("clientSecret")})}),d=await r.json();setBusy(false);if(!r.ok){setError(d.error||"Não foi possível salvar.");return}setSettings(false);await loadStatus()}
  function connect(){location.href="/api/marketplaces/bling/authorize"}
- async function sync(){setBusy(true);setError("");setNotice("Consultando vendas, itens e custos no Bling…");try{const r=await fetch("/api/marketplaces/bling/cmv",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({from,to})}),d=await r.json();if(!r.ok)throw new Error(d.error||"Não foi possível sincronizar.");await loadReport();setNotice(`${d.sales} venda(s) e ${d.items} item(ns) sincronizados.`)}catch(e){setNotice("");setError(e instanceof Error?e.message:"Não foi possível sincronizar as vendas.")}finally{setBusy(false)}}
+ /** Cada chamada só processa até um teto de sub-requisições (limite do Cloudflare
+  *  Workers) — pra sincronizar um período histórico longo sem exigir dezenas de
+  *  cliques manuais, repete a chamada sozinho enquanto vier truncated:true. */
+ async function sync(){
+  setBusy(true);setError("");setNotice("Consultando vendas, itens e custos no Bling…");
+  try{
+   let totalNewSales=0,totalItems=0,truncated=true,rounds=0;
+   const failed:{saleId:string;error:string}[]=[];
+   while(truncated&&rounds<25){
+    rounds++;
+    const r=await fetch("/api/marketplaces/bling/cmv",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({from,to})});
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.error||"Não foi possível sincronizar.");
+    totalNewSales+=d.newSales;totalItems+=d.items;if(d.failed?.length)failed.push(...d.failed);
+    truncated=Boolean(d.truncated);
+    setNotice(`Sincronizando… ${totalNewSales} venda(s) importadas até agora${truncated?" · continuando…":""}`);
+   }
+   await loadReport();
+   setNotice(`${totalNewSales} venda(s) e ${totalItems} item(ns) sincronizados.${failed.length?` ${failed.length} pedido(s) não puderam ser importados (veja o log de auditoria).`:""}`);
+  }catch(e){setNotice("");setError(e instanceof Error?e.message:"Não foi possível sincronizar as vendas.")}
+  finally{setBusy(false)}
+ }
  async function applyPeriod(){await loadReport()}
  async function exportExcel(){
   const XLSX=await import("xlsx");

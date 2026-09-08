@@ -71,22 +71,25 @@ function RadarTab({onOpenNecessidade}:{onOpenNecessidade:()=>void}){
  </div>;
 }
 
-const PERIOD_OPTIONS=[{value:7,label:"7 dias"},{value:15,label:"15 dias"},{value:30,label:"30 dias"},{value:60,label:"60 dias"},{value:90,label:"90 dias"},{value:180,label:"180 dias"}];
-
 /** Lista de planejamento: o que comprar, calculado pela venda média no período
- *  escolhido × prazo de entrega (7 dias padrão pra produto sem fornecedor vinculado)
- *  comparado ao estoque mínimo cadastrado. Puramente informativa — sem pedido de
- *  compra formal, a compra em si é feita fora do app. */
+ *  escolhido (datas explícitas, igual à tela de CMV) × prazo de entrega (7 dias padrão
+ *  pra produto sem fornecedor vinculado) comparado ao estoque mínimo cadastrado.
+ *  Puramente informativa — sem pedido de compra formal, a compra em si é feita fora
+ *  do app. */
 function SuggestionsTab(){
- const [suggestions,setSuggestions]=useState<Suggestion[]>([]),[loading,setLoading]=useState(true),[days,setDays]=useState(30);
- async function load(selectedDays:number){setLoading(true);const r=await fetch(`/api/purchasing/suggestions?days=${selectedDays}`);if(r.ok)setSuggestions((await r.json()).suggestions);setLoading(false)}
- useEffect(()=>{load(days)},[days]); // eslint-disable-line react-hooks/exhaustive-deps
+ const today=new Date().toISOString().slice(0,10),monthAgo=new Date(Date.now()-29*86400000).toISOString().slice(0,10);
+ const [from,setFrom]=useState(monthAgo),[to,setTo]=useState(today);
+ const [suggestions,setSuggestions]=useState<Suggestion[]>([]),[loading,setLoading]=useState(true);
+ async function load(){setLoading(true);const r=await fetch(`/api/purchasing/suggestions?from=${from}&to=${to}`);if(r.ok)setSuggestions((await r.json()).suggestions);setLoading(false)}
+ useEffect(()=>{load()},[]); // eslint-disable-line react-hooks/exhaustive-deps
  const totalCost=suggestions.reduce((sum,s)=>sum+s.estimatedCost,0);
  return <div className="suggestion-groups">
   <section className="cmv-filters panel">
-   <label>Calcular venda média por<select value={days} onChange={e=>setDays(Number(e.target.value))}>{PERIOD_OPTIONS.map(p=><option key={p.value} value={p.value}>{p.label}</option>)}</select></label>
+   <label>Calcular venda média de<input type="date" value={from} onChange={e=>setFrom(e.target.value)}/></label>
+   <label>até<input type="date" value={to} onChange={e=>setTo(e.target.value)}/></label>
+   <button className="secondary" onClick={load}>Aplicar período</button>
   </section>
-  {loading?<div className="loading">Calculando…</div>:!suggestions.length?<div className="cmv-empty"><span>▥</span><strong>Nenhuma necessidade de compra no momento</strong><p>Todos os produtos estão com estoque acima do mínimo projetado.</p></div>:
+  {loading?<div className="loading">Calculando…</div>:!suggestions.length?<div className="cmv-empty"><span>▥</span><strong>Nenhuma necessidade de compra no momento</strong><p>Todos os produtos estão com estoque acima do mínimo projetado (ou não há vendas registradas nesse período).</p></div>:
   <section className="panel suggestion-group">
    <div className="table-head"><div><strong>{suggestions.length} produto(s)</strong><span> · estimado {money(totalCost)}</span></div></div>
    <div className="cmv-columns suggestion-columns"><span>Produto / SKU</span><span>Estoque</span><span>Venda média/dia</span><span>Qtd. sugerida</span><span>Custo estimado</span></div>
