@@ -43,3 +43,8 @@ next-env.d.ts
 /.sites-runtime/
 /outputs/
 /work/
+
+# conhecimento interno / dados operacionais pontuais (nao pertencem ao repo publico)
+/FG_AUTO_SHOP_CONHECIMENTO_CLAUDE.md
+/campanha-pre-black/
+/OS-da-Empresa/

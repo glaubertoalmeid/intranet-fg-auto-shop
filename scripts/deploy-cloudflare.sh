@@ -11,7 +11,7 @@ cd "${project_root}"
 
 D1_DATABASE_ID="${D1_DATABASE_ID:-801f8ac4-ba69-4082-a7b5-9217ec03fbb7}"
 D1_DATABASE_NAME="${D1_DATABASE_NAME:-intranet-fg-auto-shop-db}"
-R2_BUCKET_NAME="${R2_BUCKET_NAME:-}" # vazio até o R2 ser habilitado na conta
+R2_BUCKET_NAME="${R2_BUCKET_NAME:-intranet-fg-auto-shop-images}"
 
 npm run build
 
@@ -26,6 +26,11 @@ const cfg = JSON.parse(readFileSync(path, "utf8"));
 cfg.d1_databases = [{ binding: "DB", database_name: databaseName, database_id: databaseId }];
 cfg.r2_buckets = bucketName ? [{ binding: "BUCKET", bucket_name: bucketName }] : [];
 cfg.compatibility_flags = [...new Set(cfg.compatibility_flags)];
+// Sincronização automática do CMV + fila de publicação + catálogo/estoque (ver
+// worker/index.ts's scheduled()) — cinco crons escalonados pra cada um cair numa
+// invocação própria do Worker (teto de 50 sub-requisições por invocação; rodar
+// mais de um junto estouraria o limite).
+cfg.triggers = { crons: ["*/15 * * * *", "5-59/15 * * * *", "10-59/15 * * * *", "12-59/15 * * * *", "17,47 * * * *"] };
 writeFileSync(path, JSON.stringify(cfg, null, 2));
 console.log(`[deploy] D1=${databaseName} R2=${bucketName || "(nenhum ainda)"}`);
 NODE

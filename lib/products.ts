@@ -24,6 +24,7 @@ const mapProduct=(p:AnyRecord)=>({
  width:num(p.largura),height:num(p.altura),length:num(p.profundidade||p.comprimento),
  stock_physical:num(record(p.estoque).saldoVirtualTotal||record(p.estoque).saldoFisicoTotal),
  status:text(p.situacao)==="I"?"inativo":"ativo",
+ format:text(p.formato),
 });
 
 // O Workers tem um teto de sub-requisições por execução (50 no plano gratuito da
@@ -43,11 +44,22 @@ export async function syncAllProducts(){
   const result=await blingApi(`/produtos?pagina=${page}&limite=100`);spent++;
   const rows=list(result.data).map(record);
   const payload=rows.map(mapProduct).filter(p=>p.bling_product_id&&p.name).map(p=>({...p,synced_at:new Date().toISOString()}));
-  if(payload.length){
-   const {error}=await supabase.from("products").upsert(payload,{onConflict:"bling_product_id"});spent++;
-   if(error)throw new Error(error.message);
-   imported+=payload.length;
+  // A lista de produtos do Bling não traz marca/categoria — sem isso o upsert gravava "" por
+  // cima do valor já preenchido. Linhas sem o campo saem do payload (o upsert não toca na coluna);
+  // como o PostgREST exige as mesmas chaves em todas as linhas de um lote, agrupa por chaves.
+  const groups=new Map<string,AnyRecord[]>();
+  for(const p of payload){
+   const row:AnyRecord={...p};
+   if(!p.brand)delete row.brand;
+   if(!p.category)delete row.category;
+   const key=`${"brand"in row}${"category"in row}`;
+   groups.set(key,[...(groups.get(key)||[]),row]);
   }
+  for(const group of groups.values()){
+   const {error}=await supabase.from("products").upsert(group,{onConflict:"bling_product_id"});spent++;
+   if(error)throw new Error(error.message);
+  }
+  imported+=payload.length;
   if(rows.length<100)break;
   page++;
  }

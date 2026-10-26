@@ -11,9 +11,32 @@ const searchable=(value:unknown)=>text(value).normalize("NFD").replace(/[\u0300-
 const matchesProduct=(product:AnyRecord,query:string)=>{const needle=searchable(query);if(!needle)return true;return searchable([product.nome,product.name,product.codigo,product.sku,product.gtin,product.gtinEmbalagem,product.descricaoCurta,product.descricaoComplementar].filter(Boolean).join(" ")).includes(needle)};
 const number=(value:unknown)=>{const parsed=Number(value);return Number.isFinite(parsed)&&parsed>=0?parsed:0};
 const productImage=(product:AnyRecord)=>text(product.imagemURL||product.imagemUrl||product.imageUrl||product.midia?.imagens?.externas?.[0]?.link||product.midia?.imagens?.internas?.[0]?.link);
-const productSummary=(product:AnyRecord)=>({id:text(product.id),name:text(product.nome||product.name),sku:text(product.codigo||product.sku),gtin:text(product.gtin||product.gtinEmbalagem),salePrice:number(product.preco),cost:number(product.precoCusto),stock:number(product.estoque?.saldoVirtualTotal||product.estoque?.saldoFisicoTotal),weight:number(product.pesoBruto||product.pesoLiquido),width:number(product.largura),length:number(product.profundidade||product.comprimento),height:number(product.altura),brand:text(product.marca),picture:productImage(product),status:text(product.situacao),format:text(product.formato)});
+// marca/categoria às vezes vêm como string, às vezes como {descricao} — nunca stringificar o objeto cru.
+const label=(v:unknown):string=>typeof v==="string"?v.trim():text((v as AnyRecord)?.descricao);
+// Largura/altura/profundidade ficam DENTRO de "dimensoes" na resposta real do Bling (confirmado
+// com dado ao vivo — /produtos/{id} devolve {"dimensoes":{"largura":12,"altura":20,...}}), não
+// na raiz do produto. Ler product.largura direto sempre dava 0, mesmo com a medida cadastrada.
+const productSummary=(product:AnyRecord)=>{const dim=product.dimensoes||{};return{id:text(product.id),name:text(product.nome||product.name),sku:text(product.codigo||product.sku),gtin:text(product.gtin||product.gtinEmbalagem),salePrice:number(product.preco),cost:number(product.precoCusto),stock:number(product.estoque?.saldoVirtualTotal||product.estoque?.saldoFisicoTotal),weight:number(product.pesoBruto||product.pesoLiquido),width:number(dim.largura??product.largura),length:number(dim.profundidade??product.profundidade??product.comprimento),height:number(dim.altura??product.altura),brand:label(product.marca),picture:productImage(product),status:text(product.situacao),format:text(product.formato)}};
 async function json(response:Response){const payload=await response.json() as AnyRecord;if(!response.ok)throw new Error(text(payload?.error?.description||payload?.error?.message||payload?.message)||`O Bling recusou a consulta (${response.status}).`);return payload}
 async function savePicture(url:string){if(!/^https:\/\//i.test(url))return"";try{const response=await fetch(url);if(!response.ok)return"";const contentType=response.headers.get("content-type")||"image/jpeg";if(!contentType.startsWith("image/"))return"";const ext=contentType.includes("png")?"png":contentType.includes("webp")?"webp":"jpg",key=`anuncio-${crypto.randomUUID()}.${ext}`;await getRuntimeBucket().put(key,response.body!,{httpMetadata:{contentType},customMetadata:{source:"bling"}});return key}catch{return""}}
+
+/** Kit (formato "E") não guarda custo no próprio registro — é a soma dos componentes da
+ *  estrutura (mesma lógica já usada no cálculo de CMV, agora reaplicada aqui pra o
+ *  anúncio importado já nascer com o custo certo, sem precisar de outro backfill depois). */
+async function kitCost(product:AnyRecord):Promise<number>{
+ if(text(product.formato)!=="E")return 0;
+ const componentes=Array.isArray(product.estrutura?.componentes)?product.estrutura.componentes:[];
+ let sum=0;
+ for(const comp of componentes){
+  const compId=text(comp?.produto?.id);if(!compId)continue;
+  try{
+   const payload=await json(await blingFetch(`/produtos/${compId}`));
+   const compData=payload.data||{};
+   sum+=number(compData.precoCusto||compData.fornecedor?.precoCusto)*number(comp.quantidade);
+  }catch{/* componente indisponível — segue sem ele, não trava a importação */}
+ }
+ return sum;
+}
 
 export async function GET(request:Request){
  await requirePermission("anuncios");
@@ -32,6 +55,6 @@ export async function POST(request:Request){
  const existing=(await db.prepare("SELECT bling_product_id,sku FROM listings").all<{bling_product_id:string;sku:string}>()).results,knownIds=new Set(existing.map(row=>text(row.bling_product_id))),knownSkus=new Set(existing.map(row=>text(row.sku).toLowerCase()).filter(Boolean));
  const stockById=new Map<string,number>();try{const params=new URLSearchParams();ids.forEach(id=>params.append("idsProdutos[]",id));const payload=await json(await blingFetch(`/estoques/saldos?${params}`));for(const row of Array.isArray(payload.data)?payload.data:[]){stockById.set(text(row.produto?.id||row.idProduto),number(row.saldoVirtualTotal??row.saldoFisicoTotal))}}catch{}
  let imported=0,skipped=0,failed=0;
- for(const id of ids){if(knownIds.has(id)){skipped++;continue}try{const payload=await json(await blingFetch(`/produtos/${id}`)),product=productSummary(payload.data||{});if(!product.name){failed++;continue}if(product.sku&&knownSkus.has(product.sku.toLowerCase())){skipped++;continue}const pictureKey=await savePicture(product.picture),stock=Math.max(0,Math.floor(stockById.get(id)??product.stock));await db.prepare(`INSERT INTO listings(bling_product_id,sku,product_name,platform,status,sale_price,cost,title,description,packaging,weight,width,length,height,image_keys,listing_url,gtin,brand,stock_quantity,created_by,updated_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(id,product.sku,product.name,"ambos","preparacao",product.salePrice,product.cost,"","","",listingMeasure("weight",product.weight),listingMeasure("width",product.width),listingMeasure("length",product.length),listingMeasure("height",product.height),JSON.stringify(pictureKey?[pictureKey]:[]),"",product.gtin,product.brand,stock,user.name,user.name).run();knownIds.add(id);if(product.sku)knownSkus.add(product.sku.toLowerCase());imported++}catch{failed++}}
+ for(const id of ids){if(knownIds.has(id)){skipped++;continue}try{const payload=await json(await blingFetch(`/produtos/${id}`)),product=productSummary(payload.data||{});if(!product.name){failed++;continue}if(product.sku&&knownSkus.has(product.sku.toLowerCase())){skipped++;continue}const pictureKey=await savePicture(product.picture),stock=Math.max(0,Math.floor(stockById.get(id)??product.stock));const cost=product.cost>0?product.cost:await kitCost(payload.data||{});await db.prepare(`INSERT INTO listings(bling_product_id,sku,product_name,platform,status,sale_price,cost,title,description,packaging,weight,width,length,height,image_keys,listing_url,gtin,brand,stock_quantity,created_by,updated_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(id,product.sku,product.name,"ambos","preparacao",product.salePrice,cost,"","","",listingMeasure("weight",product.weight),listingMeasure("width",product.width),listingMeasure("length",product.length),listingMeasure("height",product.height),JSON.stringify(pictureKey?[pictureKey]:[]),"",product.gtin,product.brand,stock,user.name,user.name).run();knownIds.add(id);if(product.sku)knownSkus.add(product.sku.toLowerCase());imported++}catch{failed++}}
  return NextResponse.json({ok:true,imported,skipped,failed},{status:201});
 }

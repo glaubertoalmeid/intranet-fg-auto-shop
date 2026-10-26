@@ -8,8 +8,10 @@ const money=(v:number)=>new Intl.NumberFormat("pt-BR",{style:"currency",currency
 const pct=(v:number)=>`${(v||0).toFixed(1).replace(".",",")}%`;
 
 export default function ComercialView(){
- const today=new Date().toISOString().slice(0,10),monthAgo=new Date(Date.now()-31*86400000).toISOString().slice(0,10);
- const [from,setFrom]=useState(monthAgo),[to,setTo]=useState(today),[data,setData]=useState<Data|null>(null),[loading,setLoading]=useState(true),[tab,setTab]=useState<"canais"|"produtos"|"clientes">("canais");
+ // Padrão = mês vigente (dia 1 até hoje), pela data local — toISOString() é UTC e vira o dia seguinte à noite.
+ const now=new Date(),pad=(n:number)=>String(n).padStart(2,"0");
+ const today=`${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`,monthStart=`${now.getFullYear()}-${pad(now.getMonth()+1)}-01`;
+ const [from,setFrom]=useState(monthStart),[to,setTo]=useState(today),[data,setData]=useState<Data|null>(null),[loading,setLoading]=useState(true),[tab,setTab]=useState<"canais"|"produtos"|"clientes">("canais");
 
  async function load(){setLoading(true);const r=await fetch(`/api/commercial?from=${from}&to=${to}`);if(r.ok)setData(await r.json());setLoading(false)}
  useEffect(()=>{load()},[]); // eslint-disable-line react-hooks/exhaustive-deps

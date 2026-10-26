@@ -7,6 +7,8 @@ import CmvReportView from "./CmvReportView";
 import ComercialView from "./ComercialView";
 import ProductsView from "./ProductsView";
 import PurchasingView from "./PurchasingView";
+import IntelligenceView from "./IntelligenceView";
+import LeadsView from "./LeadsView";
 
 type Task = { id:number; title:string; detail:string; priority:string; due_date:string; completed:number; created_by:string; assigned_user_id:number|null; assigned_name:string|null; assigned_email:string|null };
 type TeamMember = { id:number; name:string; username:string };
@@ -14,7 +16,7 @@ type EventItem = { id:number; title:string; description:string; event_date:strin
 type MaterialItem = { id:number; name:string; description:string; url:string; category:string; tone:string };
 type AuthUser = { id:number; name:string; username:string; role:"master"|"user"; permissions:string[] };
 type ManagedUser = AuthUser & { active:number; created_at:string; reset_requested_at:string|null };
-type Section = "painel" | "calendario" | "tarefas" | "materiais" | "preco_ecommerce" | "anuncios" | "cnpj" | "relatorios_cmv" | "comercial" | "produtos" | "compras" | "usuarios";
+type Section = "painel" | "calendario" | "tarefas" | "materiais" | "preco_ecommerce" | "anuncios" | "cnpj" | "relatorios_cmv" | "comercial" | "atendimentos" | "produtos" | "compras" | "inteligencia_comercial" | "usuarios";
 
 const nav = [
   { id:"painel" as Section, icon:"▦", label:"Painel inicial" },
@@ -26,8 +28,10 @@ const nav = [
   { id:"cnpj" as Section, icon:"⌕", label:"Consulta de CNPJ" },
   { id:"relatorios_cmv" as Section, icon:"▥", label:"Rentabilidade e CMV" },
   { id:"comercial" as Section, icon:"↗", label:"Comercial" },
+  { id:"atendimentos" as Section, icon:"☍", label:"Atendimentos e Leads" },
   { id:"produtos" as Section, icon:"⬡", label:"Produtos e Estoque" },
   { id:"compras" as Section, icon:"⇪", label:"Compras" },
+  { id:"inteligencia_comercial" as Section, icon:"◈", label:"Inteligência Comercial" },
   { id:"usuarios" as Section, icon:"♙", label:"Usuários e acessos" },
 ];
 
@@ -48,6 +52,7 @@ export default function Intranet() {
   const [eventOpen,setEventOpen] = useState(false);
   const [editingEvent,setEditingEvent] = useState<EventItem|null>(null);
   const [menuOpen,setMenuOpen] = useState(false);
+  const [collapsed,setCollapsed] = useState(false);
   const [deepLink,setDeepLink] = useState<{productId?:number}>({});
 
   async function loadAuth(){
@@ -69,7 +74,17 @@ export default function Intranet() {
       await Promise.all(requests);
     } finally { setLoading(false); }
   }
-  useEffect(()=>{ loadAuth(); },[]);
+  useEffect(()=>{
+    loadAuth();
+    try{ if(localStorage.getItem("fg_sidebar_collapsed")==="1")setCollapsed(true) }catch{ /* localStorage indisponível (aba privada, etc.) — mantém expandida */ }
+  },[]);
+  function toggleCollapsed(){
+    setCollapsed(v=>{
+      const next=!v;
+      try{ localStorage.setItem("fg_sidebar_collapsed",next?"1":"0") }catch{ /* ignora falha ao persistir preferência */ }
+      return next;
+    });
+  }
   useEffect(()=>{
     if(!auth)return;
     loadAll(auth);
@@ -109,34 +124,35 @@ export default function Intranet() {
   const can=(permission:string)=>auth.role==="master"||auth.permissions.includes(permission);
   const permittedNav=nav.filter(n=>can(n.id));
   const userName=auth.name;
-  const title = section==="painel"?"Visão geral":section==="calendario"?"Datas comemorativas e campanhas":section==="materiais"?"Materiais de fornecedores":section==="preco_ecommerce"?"Configuração de preços":section==="anuncios"?"Catálogo de Anúncios":section==="cnpj"?"Consulta de CNPJ":section==="relatorios_cmv"?"Rentabilidade e CMV":section==="comercial"?"Comercial":section==="produtos"?"Produtos e Estoque":section==="compras"?"Compras":section==="usuarios"?"Usuários e acessos":"Tarefas e pendências";
-  return <div className="app-shell">
-    <aside className={menuOpen?"sidebar open":"sidebar"}>
+  const title = section==="painel"?"Visão geral":section==="calendario"?"Datas comemorativas e campanhas":section==="materiais"?"Materiais de fornecedores":section==="preco_ecommerce"?"Configuração de preços":section==="anuncios"?"Catálogo de Anúncios":section==="cnpj"?"Consulta de CNPJ":section==="relatorios_cmv"?"Rentabilidade e CMV":section==="comercial"?"Comercial":section==="atendimentos"?"Atendimentos e Leads":section==="produtos"?"Produtos e Estoque":section==="compras"?"Compras":section==="inteligencia_comercial"?"Inteligência Comercial":section==="usuarios"?"Usuários e acessos":"Tarefas e pendências";
+  return <div className={collapsed?"app-shell collapsed":"app-shell"}>
+    <aside className={`${menuOpen?"sidebar open":"sidebar"}${collapsed?" collapsed":""}`}>
       <div className="brand"><img className="brand-logo" src="/logo-fg-auto-header.png" alt="FG Auto — Distribuidora Car Care"/><span className="brand-app-label">INTRANET</span></div>
+      <button className="sidebar-collapse-btn" onClick={toggleCollapsed} title={collapsed?"Abrir barra lateral":"Fechar barra lateral"}>{collapsed?"⇥":"⇤"}<span className="nav-label">{collapsed?"Abrir barra lateral":"Fechar barra lateral"}</span></button>
       <nav>
-        {permittedNav.map(n=><button key={n.id} className={section===n.id?"nav-item active":"nav-item"} onClick={()=>{setSection(n.id);setMenuOpen(false)}}><span>{n.icon}</span>{n.label}</button>)}
+        {permittedNav.map(n=><button key={n.id} className={section===n.id?"nav-item active":"nav-item"} onClick={()=>{setSection(n.id);setMenuOpen(false)}} title={n.label}><span>{n.icon}</span><span className="nav-label">{n.label}</span></button>)}
         {can("operacional")&&<>
-        <a className="nav-item shop-link external-first" href="https://loja.fgauto.com.br/" target="_blank" rel="noopener noreferrer"><span>↗</span>Loja FG Auto</a>
-        <a className="nav-item marketplace-link" href="https://fgautos.lojavirtualnuvem.com.br/admin/dashboard" target="_blank" rel="noopener noreferrer"><span className="market-badge nuvem">N</span>Admin Nuvemshop</a>
-        <a className="nav-item marketplace-link" href="https://www.mercadolivre.com.br/" target="_blank" rel="noopener noreferrer"><span className="market-badge ml">ML</span>Mercado Livre</a>
-        <a className="nav-item marketplace-link" href="https://seller.shopee.com.br/" target="_blank" rel="noopener noreferrer"><span className="market-badge shopee">S</span>Central Shopee</a>
-        <a className="nav-item marketplace-link" href="https://www.bling.com.br/inicio" target="_blank" rel="noopener noreferrer"><span className="market-badge bling">B</span>ERP Bling</a>
-        <a className="nav-item marketplace-link" href="https://web.whatsapp.com/" target="_blank" rel="noopener noreferrer"><span className="market-badge whatsapp">W</span>WhatsApp Web</a>
-        <a className="nav-item marketplace-link" href="https://app.joddaia.com.br/dashboard" target="_blank" rel="noopener noreferrer"><span className="market-badge jodda">J</span>Jodda IA</a>
+        <a className="nav-item shop-link external-first" href="https://loja.fgauto.com.br/" target="_blank" rel="noopener noreferrer" title="Loja FG Auto"><span>↗</span><span className="nav-label">Loja FG Auto</span></a>
+        <a className="nav-item marketplace-link" href="https://fgautos.lojavirtualnuvem.com.br/admin/dashboard" target="_blank" rel="noopener noreferrer" title="Admin Nuvemshop"><span className="market-badge nuvem">N</span><span className="nav-label">Admin Nuvemshop</span></a>
+        <a className="nav-item marketplace-link" href="https://www.mercadolivre.com.br/" target="_blank" rel="noopener noreferrer" title="Mercado Livre"><span className="market-badge ml">ML</span><span className="nav-label">Mercado Livre</span></a>
+        <a className="nav-item marketplace-link" href="https://seller.shopee.com.br/" target="_blank" rel="noopener noreferrer" title="Central Shopee"><span className="market-badge shopee">S</span><span className="nav-label">Central Shopee</span></a>
+        <a className="nav-item marketplace-link" href="https://www.bling.com.br/inicio" target="_blank" rel="noopener noreferrer" title="ERP Bling"><span className="market-badge bling">B</span><span className="nav-label">ERP Bling</span></a>
+        <a className="nav-item marketplace-link" href="https://web.whatsapp.com/" target="_blank" rel="noopener noreferrer" title="WhatsApp Web"><span className="market-badge whatsapp">W</span><span className="nav-label">WhatsApp Web</span></a>
+        <a className="nav-item marketplace-link" href="https://app.joddaia.com.br/dashboard" target="_blank" rel="noopener noreferrer" title="Jodda IA"><span className="market-badge jodda">J</span><span className="nav-label">Jodda IA</span></a>
         </>}
         {can("bancos")&&<>
-        <a className="nav-item marketplace-link bank-link-first" href="https://banco.bradesco/html/corporate/net-empresa/index.shtm" target="_blank" rel="noopener noreferrer"><span className="market-badge bradesco">B</span>Bradesco Empresa</a>
-        <a className="nav-item marketplace-link" href="https://aapj.bb.com.br/aapj/loginpfe.bb" target="_blank" rel="noopener noreferrer"><span className="market-badge bb">BB</span>Banco do Brasil PJ</a>
+        <a className="nav-item marketplace-link bank-link-first" href="https://banco.bradesco/html/corporate/net-empresa/index.shtm" target="_blank" rel="noopener noreferrer" title="Bradesco Empresa"><span className="market-badge bradesco">B</span><span className="nav-label">Bradesco Empresa</span></a>
+        <a className="nav-item marketplace-link" href="https://aapj.bb.com.br/aapj/loginpfe.bb" target="_blank" rel="noopener noreferrer" title="Banco do Brasil PJ"><span className="market-badge bb">BB</span><span className="nav-label">Banco do Brasil PJ</span></a>
         </>}
       </nav>
-      <div className="sidebar-foot"><div className="status-dot"/><div><strong>{auth.role==="master"?"Usuário Master":auth.username}</strong><small>Dados sincronizados</small></div><button className="logout-btn" onClick={async()=>{await fetch("/api/auth/logout",{method:"POST"});setAuth(null)}}>Sair</button></div>
+      <div className="sidebar-foot"><div className="status-dot"/><div><strong>{auth.role==="master"?"Usuário Master":auth.username}</strong><small>Dados sincronizados</small></div><button className="logout-btn" title="Sair" onClick={async()=>{await fetch("/api/auth/logout",{method:"POST"});setAuth(null)}}><span className="nav-label">Sair</span><span className="logout-icon">⏻</span></button></div>
     </aside>
     {menuOpen&&<button className="scrim" aria-label="Fechar menu" onClick={()=>setMenuOpen(false)}/>}
 
     <main className="main">
       <header className="topbar"><button className="menu-btn" onClick={()=>setMenuOpen(true)}>☰</button><div><p>FG Auto Shop <span>/ {title}</span></p></div><GlobalSearch onProduct={goToProduct} onTask={goToTask}/><div className="user"><div className="avatar">{initials(userName)}</div><div><strong>{userName}</strong><small>Equipe FG Auto</small></div></div></header>
       <div className="page">
-        {section!=="preco_ecommerce"&&section!=="anuncios"&&section!=="cnpj"&&section!=="relatorios_cmv"&&section!=="produtos"&&section!=="compras"&&section!=="comercial"&&<section className="page-head"><div><p className="eyebrow">CENTRAL DE OPERAÇÕES</p><h1>{section==="painel"?`Olá, ${userName.split(" ")[0]}!`:title}</h1><p>{section==="painel"?"Acompanhe as prioridades e campanhas da equipe em um só lugar.":section==="calendario"?"Catálogo anual para planejar promoções, brindes, kits, frete grátis e sorteios.":section==="materiais"?"Acesse fotos, vídeos e materiais de divulgação disponibilizados pelos fornecedores.":section==="usuarios"?"Crie logins e defina quais módulos cada pessoa pode acessar.":auth.role==="master"?"Atribua tarefas à equipe e acompanhe todas as pendências.":"Acompanhe somente as tarefas direcionadas a você."}</p></div>{section!=="materiais"&&section!=="usuarios"&&<div className="head-actions">{section!=="calendario"&&can("calendario")&&<button className="secondary" onClick={()=>openEvent()}>+ Nova data</button>} {section!=="tarefas"&&auth.role==="master"&&can("tarefas")&&<button className="primary" onClick={()=>openTask()}>+ Nova tarefa</button>}</div>}</section>}
+        {section!=="preco_ecommerce"&&section!=="anuncios"&&section!=="cnpj"&&section!=="relatorios_cmv"&&section!=="produtos"&&section!=="compras"&&section!=="comercial"&&section!=="atendimentos"&&section!=="inteligencia_comercial"&&<section className="page-head"><div><p className="eyebrow">CENTRAL DE OPERAÇÕES</p><h1>{section==="painel"?`Olá, ${userName.split(" ")[0]}!`:title}</h1><p>{section==="painel"?"Acompanhe as prioridades e campanhas da equipe em um só lugar.":section==="calendario"?"Catálogo anual para planejar promoções, brindes, kits, frete grátis e sorteios.":section==="materiais"?"Acesse fotos, vídeos e materiais de divulgação disponibilizados pelos fornecedores.":section==="usuarios"?"Crie logins e defina quais módulos cada pessoa pode acessar.":auth.role==="master"?"Atribua tarefas à equipe e acompanhe todas as pendências.":"Acompanhe somente as tarefas direcionadas a você."}</p></div>{section!=="materiais"&&section!=="usuarios"&&<div className="head-actions">{section!=="calendario"&&can("calendario")&&<button className="secondary" onClick={()=>openEvent()}>+ Nova data</button>} {section!=="tarefas"&&auth.role==="master"&&can("tarefas")&&<button className="primary" onClick={()=>openTask()}>+ Nova tarefa</button>}</div>}</section>}
 
         {loading?<div className="loading">Carregando informações…</div>:section==="painel"?<>
           <section className="stat-grid">
@@ -155,8 +171,10 @@ export default function Intranet() {
         :section==="cnpj"?<CnpjLookupView/>
         :section==="relatorios_cmv"?<CmvReportView isMaster={auth.role==="master"}/>
         :section==="comercial"?<ComercialView/>
+        :section==="atendimentos"?<LeadsView currentUser={auth}/>
         :section==="produtos"?<ProductsView openProductId={deepLink.productId}/>
         :section==="compras"?<PurchasingView/>
+        :section==="inteligencia_comercial"?<IntelligenceView/>
         :section==="usuarios"?<UsersView/>
         :<CalendarView events={events} onAdd={()=>openEvent()} onEdit={openEvent} onRemove={removeEvent}/>} 
       </div>
@@ -219,7 +237,7 @@ function AuthScreen({setupRequired,onAuthenticated}:{setupRequired:boolean;onAut
 
 const permissionLabels:Record<string,string>={
   painel:"Painel inicial",calendario:"Datas e campanhas",tarefas:"Tarefas",
-  materiais:"Materiais e Drives",preco_ecommerce:"Configuração de preços",anuncios:"Catálogo de Anúncios",cnpj:"Consulta de CNPJ",relatorios_cmv:"Rentabilidade e CMV",comercial:"Comercial",produtos:"Produtos e Estoque",compras:"Compras",operacional:"Loja, marketplaces, Bling e WhatsApp",
+  materiais:"Materiais e Drives",preco_ecommerce:"Configuração de preços",anuncios:"Catálogo de Anúncios",cnpj:"Consulta de CNPJ",relatorios_cmv:"Rentabilidade e CMV",comercial:"Comercial",atendimentos:"Atendimentos e Leads",produtos:"Produtos e Estoque",compras:"Compras",inteligencia_comercial:"Inteligência Comercial",operacional:"Loja, marketplaces, Bling e WhatsApp",
   bancos:"Contas bancárias"
 };
 

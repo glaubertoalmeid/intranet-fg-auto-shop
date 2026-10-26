@@ -16,5 +16,23 @@ async function init(){
   if(!total?.total)await db.batch(initialMaterials.map((m,i)=>db.prepare("INSERT INTO materials(name,description,url,category,tone,position) VALUES(?,?,?,?,?,?)").bind(...m,i)));
 }
 
-export async function GET(){await requirePermission("materiais");await init();const result=await getRuntimeDb().prepare("SELECT * FROM materials ORDER BY position ASC,id ASC").all();return NextResponse.json(result.results)}
-export async function POST(req:Request){await requirePermission("materiais");await init();const body=await req.json() as Record<string,string>;if(!body.name?.trim())return NextResponse.json({error:"Informe o nome do material."},{status:400});const total=await getRuntimeDb().prepare("SELECT COUNT(*) total FROM materials").first<{total:number}>();await getRuntimeDb().prepare("INSERT INTO materials(name,description,url,category,tone,position) VALUES(?,?,?,?,?,?)").bind(body.name.trim(),body.description?.trim()??"",body.url?.trim()??"",body.category?.trim()||"Fornecedor",body.tone||"blue",Number(total?.total??0)).run();return NextResponse.json({ok:true},{status:201})}
+export async function GET(){
+ try{
+  await requirePermission("materiais");await init();
+  const result=await getRuntimeDb().prepare("SELECT * FROM materials ORDER BY position ASC,id ASC").all();
+  return NextResponse.json(result.results);
+ }catch(error){
+  if(error instanceof Response)return error;
+  return NextResponse.json({error:error instanceof Error?`${error.name}: ${error.message}`:`Erro não padrão: ${JSON.stringify(error)}`},{status:500});
+ }
+}
+export async function POST(req:Request){
+ try{
+  await requirePermission("materiais");await init();
+  const body=await req.json() as Record<string,string>;
+  if(!body.name?.trim())return NextResponse.json({error:"Informe o nome do material."},{status:400});
+  const total=await getRuntimeDb().prepare("SELECT COUNT(*) total FROM materials").first<{total:number}>();
+  await getRuntimeDb().prepare("INSERT INTO materials(name,description,url,category,tone,position) VALUES(?,?,?,?,?,?)").bind(body.name.trim(),body.description?.trim()??"",body.url?.trim()??"",body.category?.trim()||"Fornecedor",body.tone||"blue",Number(total?.total??0)).run();
+  return NextResponse.json({ok:true},{status:201});
+ }catch(error){return NextResponse.json({error:error instanceof Error?error.message:"Não foi possível salvar o material."},{status:500})}
+}

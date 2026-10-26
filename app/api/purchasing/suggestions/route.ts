@@ -3,7 +3,7 @@ import {requirePermission} from "../../../../lib/auth";
 import {suggestPurchaseQuantity} from "../../../../lib/purchasing";
 import {fetchAllRows,getSupabase} from "../../../../lib/supabase";
 
-type ProductRow={id:number;bling_product_id:string;sku:string;name:string;brand:string;category:string;cost:number;stock_physical:number;min_stock:number;supplier_id:number|null;status:string};
+type ProductRow={id:number;bling_product_id:string;sku:string;name:string;brand:string;category:string;cost:number;stock_physical:number;min_stock:number;supplier_id:number|null;status:string;format:string};
 type Row=ProductRow&{lead_time_days:number|null;qty30:number};
 const isDate=(v:string)=>/^\d{4}-\d{2}-\d{2}$/.test(v);
 
@@ -21,7 +21,7 @@ export async function GET(request:Request){
 
   const supabase=getSupabase();
   const [products,{data:suppliers,error:suppliersError},cmvRows]=await Promise.all([
-   fetchAllRows<ProductRow>((from_,to_)=>supabase.from("products").select("id,bling_product_id,sku,name,brand,category,cost,stock_physical,min_stock,supplier_id,status").eq("status","ativo").range(from_,to_)),
+   fetchAllRows<ProductRow>((from_,to_)=>supabase.from("products").select("id,bling_product_id,sku,name,brand,category,cost,stock_physical,min_stock,supplier_id,status,format").eq("status","ativo").neq("format","E").range(from_,to_)),
    supabase.from("suppliers").select("id,lead_time_days"),
    fetchAllRows<{product_id:string;quantity:number}>((from_,to_)=>supabase.from("cmv_sales").select("product_id,quantity").gte("sale_date",from).lte("sale_date",to).range(from_,to_)),
   ]);

@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { getRuntimeDb } from "../db/runtime";
 
-export const PERMISSIONS = ["painel","calendario","tarefas","materiais","preco_ecommerce","anuncios","cnpj","relatorios_cmv","produtos","compras","comercial","operacional","bancos","usuarios"] as const;
+export const PERMISSIONS = ["painel","calendario","tarefas","materiais","preco_ecommerce","anuncios","cnpj","relatorios_cmv","produtos","compras","comercial","atendimentos","inteligencia_comercial","operacional","bancos","usuarios"] as const;
 export type Permission = typeof PERMISSIONS[number];
 export type AuthUser = { id:number; name:string; username:string; role:"master"|"user"; permissions:string[] };
 
